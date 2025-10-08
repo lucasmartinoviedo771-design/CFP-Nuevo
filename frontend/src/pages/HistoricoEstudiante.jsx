@@ -5,7 +5,13 @@ import HistorialAcademico from '../components/HistorialAcademico';
 
 async function fetchEstudiantes() {
   const { data } = await apiClient.get('/estudiantes/');
-  return data;
+  if (data && Array.isArray(data.results)) {
+    return data.results;
+  }
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return []; // Always return an array
 }
 
 export default function HistoricoEstudiante() {

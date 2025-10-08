@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Typography, Accordion, AccordionSummary, AccordionDetails, CircularProgress, 
-  List, ListItem, ListItemText, Grid, Chip, Divider, IconButton, Tooltip, Button,
+  List, ListItem, ListItemText, Grid, IconButton, Tooltip, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Checkbox, FormControlLabel,
   Snackbar, Alert
 } from '@mui/material';
@@ -237,10 +237,6 @@ function ModuloItem({ modulo, onEdit, onDelete }) {
 }
 
 function BloqueAccordion({ bloque, expanded, onChange, onAddModulo, onEditBloque, onDeleteBloque, onEditModulo, onDeleteModulo }) {
-  const [expandedBloque, setExpandedBloque] = useState(false);
-  const handleBloqueChange = (panel) => (event, isExpanded) => {
-    setExpandedBloque(isExpanded ? panel : false);
-  };
 
   return (
     <Accordion expanded={expanded} onChange={onChange} sx={{ mt: 1, mb: 1, bgcolor: 'grey.50' }}>
@@ -279,11 +275,7 @@ function BloqueAccordion({ bloque, expanded, onChange, onAddModulo, onEditBloque
   );
 }
 
-function BateriaAccordion({ bateria, expanded, onChange, onAddBloque, onEditBateria, onDeleteBateria, onAddModulo, onEditBloque, onDeleteBloque, onEditModulo, onDeleteModulo }) {
-  const [expandedBloque, setExpandedBloque] = useState(false);
-  const handleBloqueChange = (panel) => (event, isExpanded) => {
-    setExpandedBloque(isExpanded ? panel : false);
-  };
+function BateriaAccordion({ bateria, expanded, onChange, onAddBloque, onEditBateria, onDeleteBateria, onAddModulo, onEditBloque, onDeleteBloque, onEditModulo, onDeleteModulo, expandedBloque, handleBloqueChange }) {
 
   return (
     <Accordion expanded={expanded} onChange={onChange} sx={{ mt: 1, mb: 1, bgcolor: 'grey.100' }}>
@@ -335,6 +327,7 @@ export default function Estructura() {
   const [loading, setLoading] = useState(true);
   const [expandedProgram, setExpandedProgram] = useState(false);
   const [expandedBateria, setExpandedBateria] = useState(false);
+  const [expandedBloque, setExpandedBloque] = useState(false);
   const [openModuloDialog, setOpenModuloDialog] = useState(false);
   const [currentModulo, setCurrentModulo] = useState(null);
   const [parentBloqueId, setParentBloqueId] = useState(null);
@@ -351,7 +344,8 @@ export default function Estructura() {
   const fetchProgramas = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: programasList } = await api.get('/programas/'); 
+      const { data } = await api.get('/programas/'); 
+      const programasList = data.results || (Array.isArray(data) ? data : []);
       const detailedProgramas = await Promise.all(programasList.map(async (programa) => {
         const { data: detail } = await api.get(`/programas/${programa.id}/`);
         return detail;
@@ -376,6 +370,10 @@ export default function Estructura() {
 
   const handleBateriaChange = (panel) => (event, isExpanded) => {
     setExpandedBateria(isExpanded ? panel : false);
+  };
+
+  const handleBloqueChange = (panel) => (event, isExpanded) => {
+    setExpandedBloque(isExpanded ? panel : false);
   };
 
   // Modulo CRUD Handlers
@@ -633,6 +631,8 @@ export default function Estructura() {
                       onDeleteBloque={handleDeleteBloque}
                       onEditModulo={handleEditModulo}
                       onDeleteModulo={handleDeleteModulo}
+                      expandedBloque={expandedBloque}
+                      handleBloqueChange={handleBloqueChange}
                     />
                   ))
                 )}

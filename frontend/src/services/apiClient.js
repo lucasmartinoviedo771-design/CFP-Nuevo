@@ -21,10 +21,19 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
-    // Check if the error is 401 and the failed request was not for token refresh
-    if (error.response.status === 401 && originalRequest.url !== '/token/refresh/') {
+    // If request was aborted (navigation), don't spam errors
+    if (error.code === 'ECONNABORTED' || error.message === 'Request aborted') {
+      return Promise.reject(error);
+    }
+
+    const status = error.response?.status;
+    const url = originalRequest.url || '';
+    const isRefreshCall = url.includes('/token/refresh');
+
+    // Handle 401 with refresh logic, but never for the refresh endpoint itself
+    if (status === 401 && !isRefreshCall) {
       if (!originalRequest._retry) {
         originalRequest._retry = true; // Mark as retried to prevent infinite loops
 

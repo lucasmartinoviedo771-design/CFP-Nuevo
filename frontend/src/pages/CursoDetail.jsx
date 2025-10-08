@@ -6,12 +6,13 @@ import {
   AccordionSummary, AccordionDetails, Select, MenuItem, FormControl, InputLabel, Divider
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { getCurso } from "../services/cursosService";
+import { getCurso, listCohortes } from "../services/cursosService";
 import { 
   listBaterias, createBateria, listBloques, createBloque, deleteBloque,
   listModulos, createModulo, deleteModulo,
   listExamenes, createExamen, deleteExamen
 } from "../services/estructuraService";
+import { getCoursesGraph } from "../services/estructuraService";
 
 // --- ModuloExamenManager (for Parcial/Recup) ---
 function ModuloExamenManager({ modulo }) {
@@ -500,6 +501,11 @@ export default function CursoDetail() {
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('edit'); // 'edit' or 'preview'
   const [bloques, setBloques] = useState([]); // New state for bloques
+  // Inline graph (API-based)
+  const [cohortes, setCohortes] = useState([]);
+  const [cohorteId, setCohorteId] = useState('');
+  const [graph, setGraph] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -531,6 +537,31 @@ export default function CursoDetail() {
   useEffect(() => {
     if (id) fetchData();
   }, [id, fetchData]);
+
+  useEffect(() => {
+    const loadCohorts = async () => {
+      try {
+        const res = await listCohortes({ programa: id, page: 1, page_size: 200 });
+        setCohortes(res.results || res);
+      } catch (e) {
+        setCohortes([]);
+      }
+    };
+    if (id) loadCohorts();
+  }, [id]);
+
+  const handleLoadGraph = async () => {
+    if (!id) return;
+    setGraphLoading(true);
+    try {
+      const data = await getCoursesGraph({ programa_id: id, cohorte_id: cohorteId || undefined });
+      setGraph(data);
+    } catch (e) {
+      setGraph(null);
+    } finally {
+      setGraphLoading(false);
+    }
+  };
 
   const handleCreateDefaultBateria = async () => {
     setLoading(true);
@@ -564,6 +595,59 @@ export default function CursoDetail() {
       </Box>
       
       <Paper sx={{p: 2, mt: 2}}>
+        {/* Grafico de Curso (API) */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>Gráfico del Curso (API)</Typography>
+          <Box sx={{ display:'flex', gap:2, alignItems:'center', flexWrap:'wrap', mb: 1 }}>
+            <FormControl size="small" sx={{ minWidth: 240 }}>
+              <InputLabel id="coh-label">Cohorte (opcional)</InputLabel>
+              <Select labelId="coh-label" label="Cohorte (opcional)" value={cohorteId} onChange={(e)=>setCohorteId(e.target.value)}>
+                <MenuItem value=""><em>Todas</em></MenuItem>
+                {(cohortes||[]).map(c => (
+                  <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button variant="outlined" size="small" onClick={handleLoadGraph} disabled={graphLoading}>Cargar</Button>
+            {graphLoading && <CircularProgress size={20} />}
+          </Box>
+          {graph && (
+            <Box>
+              {(graph.tree || []).map(bat => (
+                <Accordion key={`bat-${bat.id}`} sx={{ my:1 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography fontWeight={600}>Batería {bat.orden}: {bat.nombre}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {(bat.children || []).map(blo => (
+                      <Accordion key={`blo-${blo.id}`} sx={{ my: 1 }}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Typography>Bloque {blo.orden}: {blo.nombre}</Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          {(blo.children || []).map(mod => (
+                            <Box key={`mod-${mod.id}`} sx={{ pl: 2, py: 0.5 }}>
+                              <Typography variant="body2">Módulo {mod.orden}: {mod.nombre} {mod.es_practica ? '(Práctica)' : ''}</Typography>
+                            </Box>
+                          ))}
+                          {Array.isArray(blo.finales) && blo.finales.length > 0 && (
+                            <Box sx={{ pl: 2, pt: 1 }}>
+                              <Typography variant="subtitle2">Finales del Bloque</Typography>
+                              {blo.finales.map(fin => (
+                                <Typography key={`fin-${fin.id}`} variant="body2" color="text.secondary">- {fin.tipo_examen} {fin.fecha ? `(${fin.fecha})` : ''}</Typography>
+                              ))}
+                            </Box>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    ))}
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+            </Box>
+          )}
+        </Box>
+
         {viewMode === 'edit' && (
           bateria ? (
             <BloqueManager bateria={bateria} bloques={bloques} setBloques={setBloques} />

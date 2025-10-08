@@ -13,7 +13,9 @@ from drf_spectacular.views import (
 )
 from core.views import (
     EstudianteViewSet, ProgramaViewSet, BateriaViewSet, BloqueViewSet, ModuloViewSet, ExamenViewSet, NotaViewSet, AsistenciaViewSet, KPIViewSet, InscripcionViewSet, ImportInscripcionesViewSet, ImportAsistenciaViewSet, ImportNotasViewSet, DashboardStatsView, UserView, EstructuraProgramaView,
-    BloqueDeFechasViewSet, SemanaConfigViewSet, CohorteViewSet
+    BloqueDeFechasViewSet, SemanaConfigViewSet, CohorteViewSet, HistoricoCursoView, LogoutView,
+    AnalyticsEnrollmentsView, AnalyticsAttendanceView, AnalyticsGradesView, AnalyticsDropoutView, AnalyticsGraduatesView,
+    CoursesGraphView
 )
 
 router = DefaultRouter()
@@ -39,9 +41,17 @@ urlpatterns = [
     path("api/dashboard-stats/", DashboardStatsView.as_view(), name="dashboard-stats"),
     path("api/user/", UserView.as_view(), name="user-details"),
     path("api/estructura/", EstructuraProgramaView.as_view(), name="estructura-programa"),
+    path("api/historico-cursos/", HistoricoCursoView.as_view(), name="historico-cursos"),
+    path("api/analytics/enrollments/", AnalyticsEnrollmentsView.as_view(), name="analytics-enrollments"),
+    path("api/analytics/attendance/", AnalyticsAttendanceView.as_view(), name="analytics-attendance"),
+    path("api/analytics/grades/", AnalyticsGradesView.as_view(), name="analytics-grades"),
+    path("api/analytics/dropout/", AnalyticsDropoutView.as_view(), name="analytics-dropout"),
+    path("api/analytics/graduates/", AnalyticsGraduatesView.as_view(), name="analytics-graduates"),
+    path("api/administracion/grafico-cursos/", CoursesGraphView.as_view(), name="courses-graph"),
     path("api/", include(router.urls)),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/logout/', LogoutView.as_view(), name='logout'),
     # --- OpenAPI schema + UIs ---
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),                 # JSON
     path('api/schema.yaml', SpectacularAPIView.as_view(), name='schema-yaml'),

@@ -1,12 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Card, CardContent, Grid, TextField } from '@mui/material';
+import { Card, CardContent, Grid, TextField } from '@mui/material';
 import apiClient from '../services/apiClient';
 import HistorialAcademico from '../components/HistorialAcademico'; // Import the new component
 
 // These functions remain here as they are specific to the page's primary purpose
 async function fetchEstudiantes() {
   const { data } = await apiClient.get('/estudiantes/');
-  return data;
+  if (data && Array.isArray(data.results)) {
+    return data.results;
+  }
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return []; // Always return an array
 }
 
 export default function Notas() {
@@ -35,7 +41,6 @@ export default function Notas() {
 
     // Fetch courses for the selected student (for filtering, etc.)
     (async () => {
-      const { data: inscripciones } = await apiClient.get('/inscripciones/', { params: { estudiante: selEstudiante } });
       // Since inscriptions are now by module, we need to get the program from the module's block's bateria
       // This is complex, so for now, we'll fetch all programs as a workaround to populate the modal.
       // A better solution would be to have a specific endpoint or adjust the inscription serializer.

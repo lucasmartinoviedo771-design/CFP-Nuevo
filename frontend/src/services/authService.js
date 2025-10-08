@@ -36,14 +36,26 @@ const getUserDetails = async () => {
         const response = await apiClient.get('/user/');
         return response.data;
     } catch (err) {
-        console.error("Error fetching user details:", err);
+        // Silently ignore aborted/canceled requests to avoid noisy logs during redirects
+        if (err?.code === 'ECONNABORTED' || err?.message === 'Request aborted') {
+            return null;
+        }
         return null;
     }
 };
 
-const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+const logout = async () => {
+    try {
+        const refresh = localStorage.getItem('refreshToken');
+        if (refresh) {
+            await apiClient.post('/logout/', { refresh });
+        }
+    } catch (e) {
+        // Ignore server-side logout errors; proceed to clear local state
+    } finally {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+    }
 };
 
 const getAccessToken = () => {

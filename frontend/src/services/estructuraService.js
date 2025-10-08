@@ -35,3 +35,9 @@ export const listExamenes = async (params) => {
 export const createExamen = (data) => apiClient.post("/examenes/", data);
 export const updateExamen = (id, data) => apiClient.patch(`/examenes/${id}/`, data);
 export const deleteExamen = (id) => apiClient.delete(`/examenes/${id}/`);
+
+// --- Courses Graph ---
+export const getCoursesGraph = async (params) => {
+  const { data } = await apiClient.get('/administracion/grafico-cursos/', { params });
+  return data;
+}
