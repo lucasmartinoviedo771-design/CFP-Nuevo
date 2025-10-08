@@ -1,4 +1,4 @@
-import React, { useState, createContext } from "react";
+import React, { useState, useEffect, createContext } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import theme from "./theme";
@@ -18,6 +18,7 @@ import Calendario from './pages/Calendario';
 import Cohortes from './pages/Cohortes';
 import HistoricoCursos from './pages/HistoricoCursos';
 import HistoricoEstudiante from './pages/HistoricoEstudiante'; // Added
+import GraficoCursos from './pages/GraficoCursos';
 
 // Services
 import authService from "./services/authService";
@@ -132,11 +133,34 @@ function HistoricoEstudianteWrapper() {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [initializing, setInitializing] = useState(true);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const access = authService.getAccessToken();
+        const refresh = authService.getRefreshToken();
+        if (!access && refresh) {
+          await authService.refresh(refresh);
+        }
+        const accessNow = authService.getAccessToken();
+        if (accessNow) {
+          const me = await authService.getUserDetails();
+          if (me) setUser(me);
+        }
+      } catch (e) {
+        // ignore; interceptor will handle redirects on 401
+      } finally {
+        setInitializing(false);
+      }
+    };
+    init();
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
       <UserContext.Provider value={{ user, setUser }}>
-
+          {initializing ? null : (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -152,8 +176,10 @@ export default function App() {
             <Route path="/cohortes" element={<PrivateRoute><CohortesWrapper /></PrivateRoute>} />
             <Route path="/historico-cursos" element={<PrivateRoute><HistoricoCursosWrapper /></PrivateRoute>} />
             <Route path="/historico-estudiante" element={<PrivateRoute><HistoricoEstudianteWrapper /></PrivateRoute>} /> {/* Added */}
+            <Route path="/grafico-cursos" element={<PrivateRoute><AppLayout title="Grafico de Cursos"><GraficoCursos /></AppLayout></PrivateRoute>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} /> {/* Catch-all for unknown routes */}
           </Routes>
+          )}
 
       </UserContext.Provider>
     </ThemeProvider>

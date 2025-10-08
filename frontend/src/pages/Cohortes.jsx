@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Button, CircularProgress, Paper,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Snackbar, Alert
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Snackbar, Alert, TablePagination
 } from '@mui/material';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import api from '../services/apiClient';
@@ -15,16 +15,21 @@ export default function Cohortes() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'success' });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [total, setTotal] = useState(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [cohortesRes, programasRes, bloquesRes] = await Promise.all([
-        api.get('/cohortes/'),
-        api.get('/programas/'),
-        api.get('/bloques-de-fechas/'),
+        api.get('/cohortes/', { params: { page: page + 1, page_size: rowsPerPage } }),
+        api.get('/programas/', { params: { page: 1, page_size: 200 } }),
+        api.get('/bloques-de-fechas/', { params: { page: 1, page_size: 200 } }),
       ]);
-      setCohortes(cohortesRes.data.results || cohortesRes.data);
+      const cohortesData = cohortesRes.data;
+      setCohortes(cohortesData.results || cohortesData);
+      setTotal(typeof cohortesData.count === 'number' ? cohortesData.count : (Array.isArray(cohortesData) ? cohortesData.length : 0));
       setProgramas(programasRes.data.results || programasRes.data);
       setBloques(bloquesRes.data.results || bloquesRes.data);
     } catch (error) {
@@ -33,7 +38,7 @@ export default function Cohortes() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, rowsPerPage]);
 
   useEffect(() => {
     fetchData();
@@ -75,26 +80,40 @@ export default function Cohortes() {
       </Typography>
 
       {loading ? <CircularProgress /> : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Nombre Cohorte</TableCell>
-                <TableCell>Programa</TableCell>
-                <TableCell>Calendario</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {cohortes.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell>{c.nombre}</TableCell>
-                  <TableCell>{c.programa.nombre}</TableCell>
-                  <TableCell>{c.bloque_fechas.nombre}</TableCell>
+        <>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nombre Cohorte</TableCell>
+                  <TableCell>Programa</TableCell>
+                  <TableCell>Calendario</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {cohortes.map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell>{c.nombre}</TableCell>
+                    <TableCell>{c.programa.nombre}</TableCell>
+                    <TableCell>{c.bloque_fechas.nombre}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 50]}
+              component="div"
+              count={total}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={(e, p) => setPage(p)}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              labelRowsPerPage="Filas por página:"
+            />
+          </Box>
+        </>
       )}
 
       <CohorteFormDialog 

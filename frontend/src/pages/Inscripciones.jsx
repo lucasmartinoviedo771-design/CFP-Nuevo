@@ -7,7 +7,7 @@ import api from "../services/apiClient";
 import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, CircularProgress, Select, MenuItem,
-  FormControl, InputLabel, Checkbox, FormControlLabel, Accordion, AccordionSummary, AccordionDetails,
+  FormControl, InputLabel, Checkbox, FormControlLabel, Accordion, AccordionSummary, AccordionDetails, TablePagination,
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
@@ -16,11 +16,13 @@ export default function Inscripciones() {
   const [students, setStudents] = useState([]);
   const [cohortes, setCohortes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [total, setTotal] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedCohortes, setSelectedCohortes] = useState([]);
   const [selectedModulos, setSelectedModulos] = useState({}); // { cohorteId: [moduloId1, ...] }
   const [bloques, setBloques] = useState({}); // { cohorteId: [bloque1, ...] }
-  const [approvedBloques, setApprovedBloques] = useState([]); // [bloqueId1, ...]
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Fetch initial data
@@ -29,11 +31,13 @@ export default function Inscripciones() {
       setLoading(true);
       try {
         const [inscripcionesData, studentsData, cohortesData] = await Promise.all([
-          api.get('/inscripciones/'),
-          api.get('/estudiantes/'),
-          api.get('/cohortes/'),
+          api.get('/inscripciones/', { params: { page: page + 1, page_size: rowsPerPage } }),
+          api.get('/estudiantes/', { params: { page: 1, page_size: 200 } }),
+          api.get('/cohortes/', { params: { page: 1, page_size: 200 } }),
         ]);
-        setInscripciones(inscripcionesData.data.results || inscripcionesData.data);
+        const insc = inscripcionesData.data;
+        setInscripciones(insc.results || insc);
+        setTotal(typeof insc.count === 'number' ? insc.count : (Array.isArray(insc) ? insc.length : 0));
         setStudents(studentsData.data.results || studentsData.data);
         setCohortes(cohortesData.data.results || cohortesData.data);
       } catch (e) {
@@ -44,24 +48,13 @@ export default function Inscripciones() {
       }
     }
     fetchData();
-  }, []);
+  }, [page, rowsPerPage]);
 
-  const handleStudentChange = async (event) => {
+  const handleStudentChange = (event) => {
     const studentId = event.target.value;
     setSelectedStudent(studentId);
     setSelectedCohortes([]);
     setSelectedModulos({});
-    if (studentId) {
-      try {
-        const { data: approved } = await api.get(`/estudiantes/${studentId}/approved_bloques/`);
-        setApprovedBloques(approved.map(b => b.id));
-      } catch (error) {
-        console.error(`Error fetching approved bloques for student ${studentId}:`, error);
-        setApprovedBloques([]);
-      }
-    } else {
-      setApprovedBloques([]);
-    }
   };
 
   const handleModuloToggle = async (cohorteId, moduloId) => {
@@ -151,8 +144,9 @@ export default function Inscripciones() {
       setSelectedModulos({});
       
       // Refetch inscriptions
-      const updatedInscripciones = await api.get('/inscripciones/');
+      const updatedInscripciones = await api.get('/inscripciones/', { params: { page: page + 1, page_size: rowsPerPage } });
       setInscripciones(updatedInscripciones.data.results || updatedInscripciones.data);
+      setTotal(updatedInscripciones.data.count ?? total);
 
     } catch (e) {
       console.error("Error creating inscripciones:", e?.response?.status, e?.response?.data || e?.message);
@@ -165,8 +159,9 @@ export default function Inscripciones() {
     if (window.confirm("¿Está seguro de que desea eliminar esta inscripción?")) {
       try {
         await deleteInscripcion(id);
-        const updatedInscripciones = await api.get('/inscripciones/');
+        const updatedInscripciones = await api.get('/inscripciones/', { params: { page: page + 1, page_size: rowsPerPage } });
         setInscripciones(updatedInscripciones.data.results || updatedInscripciones.data);
+        setTotal(updatedInscripciones.data.count ?? total);
       } catch (e) {
         console.error("Error deleting inscripcion:", e?.response?.status, e?.response?.data || e?.message);
         setErrorMsg("Error al eliminar la inscripción.");
@@ -271,32 +266,44 @@ export default function Inscripciones() {
         {loading ? (
           <CircularProgress />
         ) : (
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Estudiante</TableCell>
-                  <TableCell>Cohorte</TableCell>
-                  <TableCell>Módulo Inscrito</TableCell>
-                  <TableCell>Estado</TableCell>
-                  <TableCell>Acciones</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {inscripciones.map(r => (
-                  <TableRow key={r.id}>
-                    <TableCell>{r.estudiante ? `${r.estudiante.apellido}, ${r.estudiante.nombre}` : 'N/A'}</TableCell>
-                    <TableCell>{r.cohorte?.nombre || 'N/A'}</TableCell>
-                    <TableCell>{r.modulo?.nombre || 'N/A'}</TableCell>
-                    <TableCell>{r.estado}</TableCell>
-                    <TableCell>
-                      <Button size="small" color="error" onClick={() => handleDelete(r.id)}>Eliminar</Button>
-                    </TableCell>
+          <>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Estudiante</TableCell>
+                    <TableCell>Cohorte</TableCell>
+                    <TableCell>Módulo Inscrito</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell>Acciones</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {inscripciones.map(r => (
+                    <TableRow key={r.id}>
+                      <TableCell>{r.estudiante ? `${r.estudiante.apellido}, ${r.estudiante.nombre}` : 'N/A'}</TableCell>
+                      <TableCell>{r.cohorte?.nombre || 'N/A'}</TableCell>
+                      <TableCell>{r.modulo?.nombre || 'N/A'}</TableCell>
+                      <TableCell>{r.estado}</TableCell>
+                      <TableCell>
+                        <Button size="small" color="error" onClick={() => handleDelete(r.id)}>Eliminar</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(e, p) => setPage(p)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage="Filas por página:"
+            />
+          </>
         )}
       </Box>
     </>

@@ -1,2 +1,33 @@
-venv/
-CFP.zip
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# Django stuff:
+*.log
+*.pot
+*.sqlite3
+
+# IDEs:
+.idea/
+.vscode/
+
+# OS generated files:
+.DS_Store
+.Trashes
+thumbs.db
+
+# Frontend
+node_modules/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temp files
+tmp/

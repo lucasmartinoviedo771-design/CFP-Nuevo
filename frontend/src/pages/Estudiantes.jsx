@@ -5,7 +5,7 @@ import {
   FormGroup, FormControlLabel, Checkbox, Table, TableBody, TableCell,
   TableHead, TableRow, TableContainer, Paper, MenuItem, TableSortLabel,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-  Snackbar, Alert, Tabs, Tab
+  Snackbar, Alert, Tabs, Tab, CircularProgress, TablePagination
 } from '@mui/material';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -67,6 +67,9 @@ export default function Estudiantes() {
   const [form, setForm] = useState(initialFormState);
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'success' });
   const [currentTab, setCurrentTab] = useState(0);
+  const [page, setPage] = useState(0); // 0-based for MUI
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [total, setTotal] = useState(0);
   const formCardRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -80,14 +83,17 @@ export default function Estudiantes() {
       if (ordering.field) {
         params.ordering = `${ordering.direction === 'desc' ? '-' : ''}${ordering.field}`;
       }
+      params.page = page + 1; // DRF is 1-based
+      params.page_size = rowsPerPage;
       const { data } = await api.get('/estudiantes/', { params });
-      setRows(data || []);
+      setRows(data.results || data || []);
+      setTotal(typeof data.count === 'number' ? data.count : (data.results ? data.results.length : (Array.isArray(data) ? data.length : 0)));
     } catch (error) {
       setFeedback({ open: true, message: 'Error al cargar los estudiantes.', severity: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [filters, ordering]);
+  }, [filters, ordering, page, rowsPerPage]);
 
   useEffect(() => {
     if (currentTab === 0) {
@@ -102,17 +108,28 @@ export default function Estudiantes() {
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
+    setPage(0);
   };
 
   const handleSort = (field) => {
     const isAsc = ordering.field === field && ordering.direction === 'asc';
     setOrdering({ field, direction: isAsc ? 'desc' : 'asc' });
+    setPage(0);
   };
 
   const onChange = (e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
     setForm((f) => ({ ...f, [name]: val }));
+  };
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
 
   const handleSubmit = async () => {
@@ -286,7 +303,13 @@ export default function Estudiantes() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {rows.map((r) => (
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={headCells.length + 1} align="center">
+                        <CircularProgress />
+                      </TableCell>
+                    </TableRow>
+                  ) : rows.map((r) => (
                     <TableRow key={r.id} hover>
                       <TableCell><strong>{r.dni}</strong></TableCell>
                       <TableCell>{r.apellido}, {r.nombre}</TableCell>
@@ -300,12 +323,22 @@ export default function Estudiantes() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!rows.length && (
+                  {!loading && !rows.length && (
                     <TableRow><TableCell colSpan={headCells.length + 1}><Typography color="text.secondary">No hay estudiantes cargados.</Typography></TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 50]}
+              component="div"
+              count={total}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={(e, p) => setPage(p)}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              labelRowsPerPage="Filas por página:"
+            />
           </CardContent>
         </Card>
       </TabPanel>

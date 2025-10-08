@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Collapse } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -39,6 +39,7 @@ const adminCursosItems = [
   { label: 'Programas', icon: <SchoolIcon/>, href: '/programas' },
   { label: 'Calendario Académico', icon: <CalendarMonthIcon/>, href: '/calendario' },
   { label: 'Cohortes', icon: <GroupIcon/>, href: '/cohortes' },
+  { label: 'Gráfico de Cursos', icon: <BarChartIcon/>, href: '/grafico-cursos' },
 ];
 
 function NestedListItem({ item }) {
@@ -51,15 +52,28 @@ function NestedListItem({ item }) {
 }
 
 export default function Sidebar({ width=240 }) {
-  const [open, setOpen] = useState({
-    datos: true,
-    carga: false,
-    calificaciones: false,
-    admin: false,
-  });
+  const location = useLocation();
+  const [openSection, setOpenSection] = useState(null);
 
-  const handleClick = (item) => {
-    setOpen(prev => ({ ...prev, [item]: !prev[item] }));
+  useEffect(() => {
+    const currentPath = location.pathname;
+    if (dataItems.some(item => item.href === currentPath)) {
+      setOpenSection('datos');
+    } else if (cargaDatosItems.some(item => item.href === currentPath)) {
+      setOpenSection('carga');
+    } else if (calificacionesItems.some(item => item.href === currentPath)) {
+      setOpenSection('calificaciones');
+    } else if (adminCursosItems.some(item => item.href === currentPath)) {
+      setOpenSection('admin');
+    } else {
+      setOpenSection(null);
+    }
+  }, [location.pathname]);
+
+  const handleClick = (sectionName) => {
+    setOpenSection(prevOpenSection =>
+      prevOpenSection === sectionName ? null : sectionName
+    );
   };
 
   return (
@@ -79,9 +93,9 @@ export default function Sidebar({ width=240 }) {
         <ListItemButton onClick={() => handleClick('datos')}>
           <ListItemIcon><StorageIcon /></ListItemIcon>
           <ListItemText primary="Datos" />
-          {open.datos ? <ExpandLess /> : <ExpandMore />}
+          {openSection === 'datos' ? <ExpandLess /> : <ExpandMore />}
         </ListItemButton>
-        <Collapse in={open.datos} timeout="auto" unmountOnExit>
+        <Collapse in={openSection === 'datos'} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
             {dataItems.map(item => <NestedListItem key={item.href} item={item} />)}
           </List>
@@ -91,9 +105,9 @@ export default function Sidebar({ width=240 }) {
         <ListItemButton onClick={() => handleClick('carga')}>
           <ListItemIcon><UploadFileIcon /></ListItemIcon>
           <ListItemText primary="Carga de Datos" />
-          {open.carga ? <ExpandLess /> : <ExpandMore />}
+          {openSection === 'carga' ? <ExpandLess /> : <ExpandMore />}
         </ListItemButton>
-        <Collapse in={open.carga} timeout="auto" unmountOnExit>
+        <Collapse in={openSection === 'carga'} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
             {cargaDatosItems.map(item => <NestedListItem key={item.href} item={item} />)}
           </List>
@@ -103,9 +117,9 @@ export default function Sidebar({ width=240 }) {
         <ListItemButton onClick={() => handleClick('calificaciones')}>
           <ListItemIcon><GradingIcon /></ListItemIcon>
           <ListItemText primary="Calificaciones" />
-          {open.calificaciones ? <ExpandLess /> : <ExpandMore />}
+          {openSection === 'calificaciones' ? <ExpandLess /> : <ExpandMore />}
         </ListItemButton>
-        <Collapse in={open.calificaciones} timeout="auto" unmountOnExit>
+        <Collapse in={openSection === 'calificaciones'} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
             {calificacionesItems.map(item => <NestedListItem key={item.href} item={item} />)}
           </List>
@@ -115,9 +129,9 @@ export default function Sidebar({ width=240 }) {
         <ListItemButton onClick={() => handleClick('admin')}>
           <ListItemIcon><SchoolIcon /></ListItemIcon>
           <ListItemText primary="Administración de Cursos" />
-          {open.admin ? <ExpandLess /> : <ExpandMore />}
+          {openSection === 'admin' ? <ExpandLess /> : <ExpandMore />}
         </ListItemButton>
-        <Collapse in={open.admin} timeout="auto" unmountOnExit>
+        <Collapse in={openSection === 'admin'} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
             {adminCursosItems.map(item => <NestedListItem key={item.href} item={item} />)}
           </List>
