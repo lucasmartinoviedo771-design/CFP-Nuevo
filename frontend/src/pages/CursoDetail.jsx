@@ -1,0 +1,584 @@
+import { useEffect, useState, useCallback } from "react";
+import { useParams, Link as RouterLink } from "react-router-dom";
+import { 
+  Box, Typography, CircularProgress, Breadcrumbs, Paper, TextField, Button, 
+  Table, TableBody, TableCell, TableContainer, TableRow, Accordion, 
+  AccordionSummary, AccordionDetails, Select, MenuItem, FormControl, InputLabel, Divider
+} from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { getCurso } from "../services/cursosService";
+import { 
+  listBaterias, createBateria, listBloques, createBloque, deleteBloque,
+  listModulos, createModulo, deleteModulo,
+  listExamenes, createExamen, deleteExamen
+} from "../services/estructuraService";
+
+// --- ModuloExamenManager (for Parcial/Recup) ---
+function ModuloExamenManager({ modulo }) {
+  const [examenes, setExamenes] = useState([]);
+  const [form, setForm] = useState({ tipo_examen: 'PARCIAL', fecha: '', modulo: modulo.id, bloque: null });
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error' 
+
+  const fetchExamenes = useCallback(async () => {
+    try {
+      const res = await listExamenes({ modulo: modulo.id });
+      setExamenes(res.results || res);
+    } catch (err) { console.error("Error fetching module examenes:", err); }
+  }, [modulo.id]);
+
+  useEffect(() => { fetchExamenes(); }, [fetchExamenes]);
+
+  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaveStatus('saving');
+    try {
+      const payload = { ...form };
+      if (payload.fecha === '') payload.fecha = null;
+      await createExamen(payload);
+      setForm({ tipo_examen: 'PARCIAL', fecha: '', modulo: modulo.id, bloque: null });
+      fetchExamenes();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error("Error creating module examen:", err.response?.data || err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("¿Eliminar examen?")) {
+      setSaveStatus('saving');
+      try {
+        await deleteExamen(id);
+        fetchExamenes();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error("Error deleting module examen:", err.response?.data || err);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{mt:1}}>Exámenes del Módulo (Parciales)</Typography>
+      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1, my: 1, alignItems: 'center' }}>
+        <FormControl size="small" sx={{minWidth: 150}}>
+          <InputLabel>Tipo</InputLabel>
+          <Select name="tipo_examen" value={form.tipo_examen} label="Tipo" onChange={handleFormChange}>
+            <MenuItem value="PARCIAL">Parcial</MenuItem>
+            <MenuItem value="RECUP">Recuperatorio</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField name="fecha" type="date" value={form.fecha} onChange={handleFormChange} size="small" InputLabelProps={{ shrink: true }} />
+        <Button type="submit" variant="outlined" size="small" disabled={saveStatus === 'saving'}>Agregar Examen</Button>
+        {saveStatus === 'saving' && <CircularProgress size={20} />} 
+        {saveStatus === 'saved' && <Typography color="success">Guardado ✓</Typography>}
+        {saveStatus === 'error' && <Typography color="error">Error al guardar</Typography>}
+      </Box>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableBody>
+            {examenes.map(ex => (
+              <TableRow key={ex.id}>
+                <TableCell>{ex.tipo_examen}</TableCell>
+                <TableCell>{ex.fecha || '-'}</TableCell>
+                <TableCell align="right"><Button onClick={() => handleDelete(ex.id)} size="small" color="error">X</Button></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
+// --- BloqueExamenManager (for Finals/Equiv) ---
+function BloqueExamenManager({ bloque }) {
+  const [examenes, setExamenes] = useState([]);
+  const [form, setForm] = useState({ tipo_examen: 'FINAL_SINC', fecha: '', bloque: bloque.id, modulo: null });
+  const [saveStatus, setSaveStatus] = useState('idle');
+
+  const fetchExamenes = useCallback(async () => {
+    try {
+      const res = await listExamenes({ bloque: bloque.id });
+      setExamenes(res.results || res);
+    } catch (err) { console.error("Error fetching bloque examenes:", err); }
+  }, [bloque.id]);
+
+  useEffect(() => { fetchExamenes(); }, [fetchExamenes]);
+
+  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaveStatus('saving');
+    try {
+      const payload = { ...form };
+      if (payload.fecha === '') payload.fecha = null;
+      await createExamen(payload);
+      setForm({ tipo_examen: 'FINAL_SINC', fecha: '', bloque: bloque.id, modulo: null });
+      fetchExamenes();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error("Error creating bloque examen:", err.response?.data || err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("¿Eliminar examen final?")) {
+      setSaveStatus('saving');
+      try {
+        await deleteExamen(id);
+        fetchExamenes();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error("Error deleting bloque examen:", err.response?.data || err);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="subtitle1" sx={{mt:2}}>Exámenes Finales del Bloque</Typography>
+      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1, my: 1, alignItems: 'center' }}>
+        <FormControl size="small" sx={{minWidth: 150}}>
+          <InputLabel>Tipo</InputLabel>
+          <Select name="tipo_examen" value={form.tipo_examen} label="Tipo" onChange={handleFormChange}>
+            <MenuItem value="FINAL_VIRTUAL">Final Virtual</MenuItem>
+            <MenuItem value="FINAL_SINC">Final Sincrónico</MenuItem>
+            <MenuItem value="EQUIVALENCIA">Equivalencia</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField name="fecha" type="date" value={form.fecha} onChange={handleFormChange} size="small" InputLabelProps={{ shrink: true }} />
+        <Button type="submit" variant="outlined" size="small" disabled={saveStatus === 'saving'}>Agregar Examen Final</Button>
+        {saveStatus === 'saving' && <CircularProgress size={20} />} 
+        {saveStatus === 'saved' && <Typography color="success">Guardado ✓</Typography>}
+        {saveStatus === 'error' && <Typography color="error">Error al guardar</Typography>}
+      </Box>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableBody>
+            {examenes.map(ex => (
+              <TableRow key={ex.id}>
+                <TableCell>{ex.tipo_examen}</TableCell>
+                <TableCell>{ex.fecha || '-'}</TableCell>
+                <TableCell align="right"><Button onClick={() => handleDelete(ex.id)} size="small" color="error">X</Button></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
+
+// --- ModuloManager ---
+function ModuloManager({ bloque }) {
+  const [modulos, setModulos] = useState([]);
+  const [form, setForm] = useState({ nombre: '', orden: 10, bloque: bloque.id });
+  const [saveStatus, setSaveStatus] = useState('idle');
+
+  const fetchModulos = useCallback(async () => {
+    try {
+      const res = await listModulos({ bloque: bloque.id });
+      setModulos(res.results || res);
+    } catch (err) { console.error("Error fetching modulos:", err); }
+  }, [bloque.id]);
+
+  useEffect(() => { fetchModulos(); }, [fetchModulos]);
+
+  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaveStatus('saving');
+    try {
+      await createModulo(form);
+      setForm({ nombre: '', orden: 10, bloque: bloque.id });
+      fetchModulos();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error("Error creating modulo:", err.response?.data || err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("¿Eliminar módulo? Se borrarán sus exámenes.")) {
+      setSaveStatus('saving');
+      try {
+        await deleteModulo(id);
+        fetchModulos();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error("Error deleting modulo:", err.response?.data || err);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="subtitle1" sx={{mt:1}}>Módulos del Bloque</Typography>
+      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1, my: 1, alignItems: 'center' }}>
+        <TextField name="nombre" value={form.nombre} onChange={handleFormChange} label="Nombre del Módulo" size="small" required />
+        <TextField name="orden" value={form.orden} onChange={handleFormChange} label="Orden" type="number" size="small" required />
+        <Button type="submit" variant="outlined" size="small" disabled={saveStatus === 'saving'}>Agregar Módulo</Button>
+        {saveStatus === 'saving' && <CircularProgress size={20} />} 
+        {saveStatus === 'saved' && <Typography color="success">Guardado ✓</Typography>}
+        {saveStatus === 'error' && <Typography color="error">Error al guardar</Typography>}
+      </Box>
+      {modulos.map(m => (
+        <Accordion key={m.id} sx={{ my: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography sx={{ flexShrink: 0, mr: 2 }}>Orden: {m.orden}</Typography>
+            <Typography sx={{ flexGrow: 1 }}>{m.nombre}</Typography>
+            <Button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} size="small" color="error">Eliminar Módulo</Button>
+          </AccordionSummary>
+          <AccordionDetails>
+            <ModuloExamenManager modulo={m} />
+          </AccordionDetails>
+        </Accordion>
+      ))}
+    </Box>
+  );
+}
+
+// --- BloqueManager ---
+function BloqueManager({ bateria, bloques, setBloques }) {
+  const [form, setForm] = useState({ nombre: '', orden: 10, bateria: bateria.id });
+  const [saveStatus, setSaveStatus] = useState('idle');
+
+  useEffect(() => {
+    setForm(f => ({ ...f, bateria: bateria.id }));
+  }, [bateria.id]);
+
+  const fetchBloques = useCallback(async () => {
+    try {
+      const res = await listBloques({ bateria: bateria.id });
+      setBloques(res.results || res);
+    } catch (err) { console.error("Error fetching bloques:", err); }
+  }, [bateria.id, setBloques]);
+
+  useEffect(() => { fetchBloques(); }, [fetchBloques, setBloques]);
+
+
+  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaveStatus('saving');
+    try {
+      await createBloque(form);
+      setForm({ nombre: '', orden: 10, bateria: bateria.id });
+      fetchBloques();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error("Error creating bloque:", err.response?.data || err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("¿Eliminar bloque? Se borrarán sus módulos y exámenes.")) {
+      setSaveStatus('saving');
+      try {
+        await deleteBloque(id);
+        fetchBloques();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error("Error deleting bloque:", err.response?.data || err);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    }
+  };
+
+  return (
+    <Box mt={2}>
+      <Typography variant="h6">Bloques del Curso</Typography>
+      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 2, my: 2, alignItems: 'center' }}>
+        <TextField name="nombre" value={form.nombre} onChange={handleFormChange} label="Nombre del Bloque" size="small" required />
+        <TextField name="orden" value={form.orden} onChange={handleFormChange} label="Orden" type="number" size="small" required />
+        <Button type="submit" variant="contained" disabled={saveStatus === 'saving'}>Agregar Bloque</Button>
+        {saveStatus === 'saving' && <CircularProgress size={20} />} 
+        {saveStatus === 'saved' && <Typography color="success">Guardado ✓</Typography>}
+        {saveStatus === 'error' && <Typography color="error">Error al guardar</Typography>}
+      </Box>
+
+      {bloques && bloques.length > 0 ? (
+        bloques.map(b => (
+          <Accordion key={b.id}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography sx={{ flexShrink: 0, mr: 2 }}>Orden: {b.orden}</Typography>
+              <Typography sx={{ flexGrow: 1 }}>{b.nombre}</Typography>
+              <Button onClick={(e) => { e.stopPropagation(); handleDelete(b.id); }} size="small" color="error">Eliminar Bloque</Button>
+            </AccordionSummary>
+            <AccordionDetails>
+              <BloqueExamenManager bloque={b} />
+              <Divider sx={{ my: 2 }} />
+              <ModuloManager bloque={b} />
+            </AccordionDetails>
+          </Accordion>
+        ))
+      ) : (
+        <Typography>No hay bloques definidos.</Typography>
+      )}
+    </Box>
+  );
+}
+
+function ModuloExamenPreview({ modulo }) {
+  const [examenes, setExamenes] = useState([]);
+
+  useEffect(() => {
+    async function fetchModuloExamenes() {
+      try {
+        const res = await listExamenes({
+          modulo: modulo.id,
+          tipo_examen__in: 'PARCIAL,RECUP' // Filter for module exams
+        });
+        setExamenes(res.results || res);
+      } catch (err) {
+        console.error("Error fetching module examenes for preview:", err);
+      }
+    }
+    fetchModuloExamenes();
+  }, [modulo.id]);
+
+  if (examenes.length === 0) return null;
+
+  return (
+    <Box sx={{ mt: 1, ml: 2 }}>
+      <Typography variant="subtitle2">Exámenes del Módulo:</Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ mt: 0.5 }}>
+        <Table size="small">
+          <TableBody>
+            {examenes.map(ex => (
+              <TableRow key={ex.id}>
+                <TableCell>{ex.tipo_examen}</TableCell>
+                <TableCell>{ex.fecha || '-'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
+function ModuloPreview({ bloque }) {
+  const [modulos, setModulos] = useState([]);
+
+  useEffect(() => {
+    async function fetchModulos() {
+      try {
+        const res = await listModulos({ bloque: bloque.id });
+        setModulos(res.results || res);
+      } catch (err) {
+        console.error("Error fetching modulos for preview:", err);
+      }
+    }
+    fetchModulos();
+  }, [bloque.id]);
+
+  if (modulos.length === 0) return null;
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="subtitle1">Módulos:</Typography>
+      {modulos.map(modulo => (
+        <Accordion key={modulo.id} defaultExpanded sx={{ ml: 2, my: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography>Módulo {modulo.orden}: {modulo.nombre}</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <ModuloExamenPreview modulo={modulo} />
+          </AccordionDetails>
+        </Accordion>
+      ))}
+    </Box>
+  );
+}
+
+function BloqueExamenPreview({ bloque }) {
+  const [examenes, setExamenes] = useState([]);
+
+  useEffect(() => {
+    async function fetchBloqueExamenes() {
+      try {
+        const res = await listExamenes({
+          bloque: bloque.id,
+          tipo_examen__in: 'FINAL_SINC,FINAL_VIRTUAL,EQUIVALENCIA' // Filter for final exams
+        });
+        setExamenes(res.results || res);
+      } catch (err) {
+        console.error("Error fetching bloque examenes for preview:", err);
+      }
+    }
+    fetchBloqueExamenes();
+  }, [bloque.id]);
+
+  if (examenes.length === 0) return null;
+
+  return (
+    <Box sx={{ mt: 2, ml: 2 }}>
+      <Typography variant="subtitle1">Exámenes Finales del Bloque:</Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+        <Table size="small">
+          <TableBody>
+            {examenes.map(ex => (
+              <TableRow key={ex.id}>
+                <TableCell>{ex.tipo_examen}</TableCell>
+                <TableCell>{ex.fecha || '-'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
+function CoursePreview({ curso, bateria, bloques }) {
+  return (
+    <Box>
+      <Typography variant="h5" gutterBottom>Vista Previa del Curso: {curso.nombre}</Typography>
+      {bateria ? (
+        <Box>
+          <Typography variant="h6">Batería: {bateria.nombre}</Typography>
+          {bloques.length > 0 ? (
+            bloques.map(bloque => (
+              <Accordion key={bloque.id} defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="subtitle1">Bloque {bloque.orden}: {bloque.nombre}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  {/* Modulos and Examenes for this bloque will go here */}
+                  <ModuloPreview bloque={bloque} />
+                  <BloqueExamenPreview bloque={bloque} />
+                </AccordionDetails>
+              </Accordion>
+            ))
+          ) : (
+            <Typography>No hay bloques definidos para esta batería.</Typography>
+          )}
+        </Box>
+      ) : (
+        <Typography>No hay batería para mostrar en vista previa.</Typography>
+      )}
+    </Box>
+  );
+}
+
+// --- Main Component ---
+export default function CursoDetail() {
+  const { id } = useParams();
+  const [curso, setCurso] = useState(null);
+  const [bateria, setBateria] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [viewMode, setViewMode] = useState('edit'); // 'edit' or 'preview'
+  const [bloques, setBloques] = useState([]); // New state for bloques
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const currentCurso = await getCurso(id);
+      setCurso(currentCurso);
+
+      const bateriasData = await listBaterias({ programa: currentCurso.id });
+      const bateriasList = bateriasData.results || bateriasData;
+      
+      if (bateriasList.length > 0) {
+        const currentBateria = bateriasList[0];
+        setBateria(currentBateria);
+        const bloquesData = await listBloques({ bateria: currentBateria.id });
+        setBloques(bloquesData.results || bloquesData);
+      } else {
+        setBateria(null);
+        setBloques([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch course structure:", err);
+      setError("Ocurrió un error al cargar la estructura del curso.");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (id) fetchData();
+  }, [id, fetchData]);
+
+  const handleCreateDefaultBateria = async () => {
+    setLoading(true);
+    try {
+      const newBateria = await createBateria({ programa: curso.id, nombre: `Default Bateria for ${curso.nombre}` });
+      setBateria(newBateria.data);
+      setBloques([]); // It will be new, so no bloques yet
+    } catch (err) {
+      setError("Error al crear la batería por defecto.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <CircularProgress />;
+  if (error) return <Typography color="error">{error}</Typography>;
+  if (!curso) return <Typography>No se encontró el curso.</Typography>;
+
+  return (
+    <Box>
+      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 2 }}>
+        <RouterLink to="/cursos">Capacitaciones / Cursos</RouterLink>
+        <Typography color="text.primary">{curso.nombre}</Typography>
+      </Breadcrumbs>
+
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4" gutterBottom>{curso.nombre}</Typography>
+        <Button variant="outlined" onClick={() => setViewMode(viewMode === 'edit' ? 'preview' : 'edit')}> 
+          {viewMode === 'edit' ? 'Vista Previa' : 'Volver a Edición'}
+        </Button>
+      </Box>
+      
+      <Paper sx={{p: 2, mt: 2}}>
+        {viewMode === 'edit' && (
+          bateria ? (
+            <BloqueManager bateria={bateria} bloques={bloques} setBloques={setBloques} />
+          ) : (
+            <Box>
+              <Typography>Este curso aún no tiene una estructura definida.</Typography>
+              <Button onClick={handleCreateDefaultBateria}>Crear Estructura de Curso</Button>
+            </Box>
+          )
+        )}
+        {viewMode === 'preview' && (
+          <CoursePreview curso={curso} bateria={bateria} bloques={bloques} />
+        )}
+      </Paper>
+
+    </Box>
+  );
+}
