@@ -1,6 +1,6 @@
 # backend/core/admin.py
 from django.contrib import admin
-from .models import Programa, Bateria, Bloque, Modulo, Estudiante, Inscripcion, Examen, Nota, Asistencia, BloqueDeFechas
+from .models import Programa, Bloque, Modulo, Estudiante, Inscripcion, Examen, Nota, Asistencia, BloqueDeFechas
 
 @admin.register(Estudiante)
 class EstudianteAdmin(admin.ModelAdmin):
@@ -14,4 +14,4 @@ class ProgramaAdmin(admin.ModelAdmin):
     search_fields = ("codigo", "nombre")
     list_filter = ("activo",)
 
-admin.site.register([Bateria, Bloque, Modulo, Inscripcion, Examen, Nota, Asistencia, BloqueDeFechas])
+admin.site.register([Bloque, Modulo, Inscripcion, Examen, Nota, Asistencia, BloqueDeFechas])

@@ -36,7 +36,7 @@ export default function Notas() {
     // Fetch student's full academic history
     (async () => {
       const { data } = await apiClient.get('/notas/', { params: { estudiante: selEstudiante } });
-      setHistorial(data);
+      setHistorial(data.results || data);
     })();
 
     // Fetch courses for the selected student (for filtering, etc.)

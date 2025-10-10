@@ -14,7 +14,7 @@ Para usar el sistema eficazmente, es crucial entender cómo se organizan los dat
 
 *   **Programa (Curso):** Es la plantilla maestra de una materia o capacitación (ej: "Desarrollador Web Full-Stack"). No tiene fechas y define "qué" se enseña. Se gestiona en la sección **"Capacitaciones / Cursos"**.
 
-*   **Estructura Académica:** Es el esqueleto de contenidos de un `Programa`. Aquí se define la jerarquía de **Baterías -> Bloques -> Módulos** que componen un curso. Se gestiona en la sección **"Estructura Académica"**.
+*   **Estructura Académica:** Es el esqueleto de contenidos de un `Programa`. Aquí se define la jerarquía de **Bloques -> Módulos** que componen un curso. Se gestiona en la sección **"Estructura Académica"**.
 
 *   **Calendario Académico:** Es una plantilla de tiempo reutilizable (ej: "Cursada Verano 2025"). Define "cuándo" suceden las cosas, mediante una secuencia ordenada de semanas (Clase, Parcial, Final, etc.). Se gestiona en **"Calendario Académico"**.
 
@@ -37,7 +37,7 @@ Este es el orden recomendado para crear y gestionar una cursada completa desde c
 
 1.  Ve a **"Estructura Académica"**.
 2.  Selecciona un programa de la lista.
-3.  Añade las **Baterías**, luego los **Bloques** dentro de cada batería, y finalmente los **Módulos** dentro de cada bloque. Esta es la estructura de contenidos del curso.
+3.  Añade los **Bloques**, y finalmente los **Módulos** dentro de cada bloque. Esta es la estructura de contenidos del curso.
 
 ### Paso 3: Crear las Plantillas de Calendario
 

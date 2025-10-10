@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, CircularProgress, Checkbox,
+  TableHead, TableRow, Paper, CircularProgress, Checkbox, Tooltip,
   Grid, Tabs, Tab, Select, MenuItem, FormControl, InputLabel, Snackbar, Alert
 } from "@mui/material";
 import FileUpload from "../components/FileUpload";
@@ -49,17 +49,15 @@ export default function Asistencia() {
   const [selectedClaseDate, setSelectedClaseDate] = useState('');
   const [students, setStudents] = useState([]);
   const [modulos, setModulos] = useState([]);
-  const [attendanceGrid, setAttendanceGrid] = useState({}); // { studentId: { moduloId: attendanceId/true/false } }
-  const [studentEnrolledModules, setStudentEnrolledModules] = useState({}); // { studentId: [moduleId1, ...] }
+  const [attendanceGrid, setAttendanceGrid] = useState({});
+  const [studentEnrolledModules, setStudentEnrolledModules] = useState({});
   const [loadingData, setLoadingData] = useState(false);
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'success' });
 
   const fetchProgramas = useCallback(async () => {
     try {
       const { data } = await api.get('/programas/');
-      if (Array.isArray(data)) {
-        setProgramas(data);
-      }
+      setProgramas(data.results || (Array.isArray(data) ? data : []));
     } catch (error) {
       setFeedback({ open: true, message: 'Error al cargar programas.', severity: 'error' });
     }
@@ -92,11 +90,10 @@ export default function Asistencia() {
     if (!programaId) return;
     try {
       const { data } = await api.get(`/programas/${programaId}/`);
-      if (data && data.baterias) {
-        const allBloques = data.baterias.flatMap(bateria => bateria.bloques);
-        setBloques(allBloques);
-        if (allBloques.length === 1) {
-          setSelectedBloqueId(allBloques[0].id);
+      if (data && data.bloques) {
+        setBloques(data.bloques);
+        if (data.bloques.length === 1) {
+          setSelectedBloqueId(data.bloques[0].id);
         }
       } else {
         setBloques([]);
@@ -110,8 +107,16 @@ export default function Asistencia() {
     if (!cohorteId || !bloqueId || !fecha) return;
     setLoadingData(true);
     try {
-      const { data: inscriptionsData } = await api.get(`/inscripciones/?cohorte=${cohorteId}&modulo__bloque=${bloqueId}`);
-      const inscriptions = inscriptionsData.results || inscriptionsData;
+      const inscriptionsResponse = await api.get(`/inscripciones/?cohorte=${cohorteId}&modulo__bloque=${bloqueId}&page_size=1000`);
+      const attendanceData = await listAsistencias({ 
+        modulo__bloque: bloqueId, 
+        fecha: fecha, 
+        page_size: 1000 
+      });
+
+      const inscriptionsData = inscriptionsResponse.data;
+      const inscriptions = (inscriptionsData && inscriptionsData.results) ? inscriptionsData.results : (inscriptionsData || []);
+      const existingAttendance = (attendanceData && attendanceData.results) ? attendanceData.results : (attendanceData || []);
 
       const studentMap = new Map();
       const moduleMap = new Map();
@@ -131,23 +136,34 @@ export default function Asistencia() {
       const uniqueStudents = Array.from(studentMap.values());
       const uniqueModulos = Array.from(moduleMap.values());
 
+      const grid = {};
+      uniqueStudents.forEach(student => {
+        grid[student.id] = {};
+        uniqueModulos.forEach(mod => {
+          grid[student.id][mod.id] = { status: 'none', id: null }; // none, present, absent
+        });
+      });
+
+      if (Array.isArray(existingAttendance)) {
+        existingAttendance.forEach(att => {
+          if (grid[att.estudiante] && grid[att.estudiante][att.modulo]) {
+            grid[att.estudiante][att.modulo] = { status: att.presente ? 'present' : 'absent', id: att.id };
+          }
+        });
+      }
+      
       setStudents(uniqueStudents);
       setModulos(uniqueModulos);
       setStudentEnrolledModules(enrolledModulesMap);
-
-      // Fetch existing attendance for these students and modulos for the selected date
-      const { data: existingAttendance } = await listAsistencias({ modulo__bloque: bloqueId, fecha: fecha });
-      const grid = {};
-      if (Array.isArray(existingAttendance)) {
-        existingAttendance.forEach(att => {
-          if (!grid[att.estudiante]) grid[att.estudiante] = {};
-          grid[att.estudiante][att.modulo] = att.id; // Store attendance ID if present
-        });
-      }
       setAttendanceGrid(grid);
 
     } catch (error) {
+      console.error("Error fetching students and modules:", error);
       setFeedback({ open: true, message: 'Error al cargar estudiantes y módulos.', severity: 'error' });
+      setStudents([]);
+      setModulos([]);
+      setStudentEnrolledModules({});
+      setAttendanceGrid({});
     } finally {
       setLoadingData(false);
     }
@@ -157,6 +173,12 @@ export default function Asistencia() {
   useEffect(() => { fetchCohortes(selectedProgramaId); }, [fetchCohortes, selectedProgramaId]);
   useEffect(() => { fetchCalendario(selectedCohorteId); }, [fetchCalendario, selectedCohorteId]);
   useEffect(() => { fetchBloques(selectedProgramaId); }, [fetchBloques, selectedProgramaId]);
+
+  useEffect(() => {
+    if (selectedCohorteId && selectedBloqueId && selectedClaseDate) {
+      fetchStudentsAndModulos(selectedCohorteId, selectedBloqueId, selectedClaseDate);
+    }
+  }, [selectedCohorteId, selectedBloqueId, selectedClaseDate, fetchStudentsAndModulos]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -192,11 +214,16 @@ export default function Asistencia() {
     setSelectedClaseDate(e.target.value);
   };
 
-  const handleAttendanceChange = (studentId, moduloId) => {
+  const handleStatusChange = (studentId, moduloId, newStatus) => {
     setAttendanceGrid(prevGrid => {
       const newGrid = { ...prevGrid };
-      if (!newGrid[studentId]) newGrid[studentId] = {};
-      newGrid[studentId][moduloId] = !newGrid[studentId][moduloId]; 
+      if (newGrid[studentId] && newGrid[studentId][moduloId]) {
+        const current = newGrid[studentId][moduloId];
+        const finalStatus = current.status === newStatus ? 'none' : newStatus;
+        newGrid[studentId][moduloId] = { ...current, status: finalStatus };
+      } else {
+        console.error("Inconsistent state in handleStatusChange", { studentId, moduloId, prevGrid });
+      }
       return newGrid;
     });
   };
@@ -204,29 +231,28 @@ export default function Asistencia() {
   const handleSaveAttendance = async () => {
     setLoadingData(true);
     try {
-      const attendanceRecordsToSave = [];
       for (const studentId in attendanceGrid) {
         for (const moduloId in attendanceGrid[studentId]) {
-          const isPresent = attendanceGrid[studentId][moduloId];
-          if (isPresent) {
-            attendanceRecordsToSave.push({
-              estudiante: studentId,
-              modulo: moduloId,
-              fecha: selectedClaseDate,
-              presente: true,
-              id: typeof isPresent === 'string' ? isPresent : undefined
-            });
-          } else if (typeof isPresent === 'string') {
-            await api.delete(`/asistencias/${isPresent}/`);
-          }
-        }
-      }
+          const { status, id } = attendanceGrid[studentId][moduloId];
+          const isEnrolled = studentEnrolledModules[studentId]?.includes(parseInt(moduloId));
 
-      for (const record of attendanceRecordsToSave) {
-        if (record.id) {
-          await updateAsistencia(record.id, { presente: record.presente, fecha: record.fecha });
-        } else {
-          await createAsistencia(record);
+          if (!isEnrolled) continue;
+
+          if (status === 'none' && id) {
+            await api.delete(`/asistencias/${id}/`);
+          } else if (status === 'present' || status === 'absent') {
+            const payload = { 
+              estudiante: studentId, 
+              modulo: moduloId, 
+              fecha: selectedClaseDate, 
+              presente: status === 'present' 
+            };
+            if (id) {
+              await updateAsistencia(id, payload);
+            } else {
+              await createAsistencia(payload);
+            }
+          }
         }
       }
       setFeedback({ open: true, message: 'Asistencias guardadas con éxito', severity: 'success' });
@@ -302,9 +328,6 @@ export default function Asistencia() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
-            <Button variant="contained" onClick={() => fetchStudentsAndModulos(selectedCohorteId, selectedBloqueId, selectedClaseDate)} disabled={!selectedBloqueId || !selectedClaseDate || loadingData}>Cargar Grilla de Asistencia</Button>
-          </Grid>
         </Grid>
         )}
 
@@ -317,7 +340,7 @@ export default function Asistencia() {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold' }}>Estudiante</TableCell>
                   {modulos.map(mod => (
-                    <TableCell key={mod.id} sx={{ fontWeight: 'bold' }}>{mod.nombre}</TableCell>
+                    <TableCell key={mod.id} align="center" sx={{ fontWeight: 'bold' }}>{mod.nombre}</TableCell>
                   ))}
                 </TableRow>
               </TableHead>
@@ -327,14 +350,27 @@ export default function Asistencia() {
                     <TableCell>{student.apellido}, {student.nombre}</TableCell>
                     {modulos.map(mod => {
                       const isEnrolled = studentEnrolledModules[student.id]?.includes(mod.id);
+                      const status = attendanceGrid[student.id]?.[mod.id]?.status || 'none';
                       return (
-                        <TableCell key={mod.id}>
-                          <Checkbox
-                            checked={isEnrolled && !!attendanceGrid[student.id]?.[mod.id]}
-                            disabled={!isEnrolled}
-                            onChange={() => handleAttendanceChange(student.id, mod.id)}
-                            sx={{ color: attendanceGrid[student.id]?.[mod.id] ? 'success.main' : 'default' }}
-                          />
+                        <TableCell key={mod.id} align="center">
+                          <Tooltip title="Presente">
+                            <Checkbox
+                              size="small"
+                              checked={isEnrolled && status === 'present'}
+                              disabled={!isEnrolled}
+                              onChange={() => handleStatusChange(student.id, mod.id, 'present')}
+                              sx={{ color: 'success.main', '&.Mui-checked': { color: 'success.main' } }}
+                            />
+                          </Tooltip>
+                          <Tooltip title="Ausente">
+                            <Checkbox
+                              size="small"
+                              checked={isEnrolled && status === 'absent'}
+                              disabled={!isEnrolled}
+                              onChange={() => handleStatusChange(student.id, mod.id, 'absent')}
+                              sx={{ color: 'error.main', '&.Mui-checked': { color: 'error.main' } }}
+                            />
+                          </Tooltip>
                         </TableCell>
                       );
                     })}

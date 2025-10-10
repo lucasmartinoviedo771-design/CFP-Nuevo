@@ -13,8 +13,16 @@ import api from '../services/apiClient';
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('es-AR');
+  // The date string from backend is 'YYYY-MM-DD'.
+  // Splitting it and creating a Date object with UTC values avoids timezone shifts.
+  const parts = dateString.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+  const day = parseInt(parts[2], 10);
+  const date = new Date(Date.UTC(year, month, day));
+  
+  // toLocaleDateString with timeZone: 'UTC' ensures the date is formatted as is.
+  return date.toLocaleDateString('es-AR', { timeZone: 'UTC' });
 };
 
 const initialModuloFormState = {
@@ -24,19 +32,18 @@ const initialModuloFormState = {
   orden: 1,
   es_practica: false,
   asistencia_requerida_practica: 80,
-  bloque: null, // ID del bloque padre
+  bloque: null,
 };
 
 const initialBloqueFormState = {
   nombre: '',
   orden: 1,
-  bateria: null, // ID de la batería padre
+  programa: null,
 };
 
-const initialBateriaFormState = {
+const initialProgramaFormState = {
   nombre: '',
-  orden: 1,
-  programa: null, // ID del programa padre
+  codigo: '',
 };
 
 function ModuloFormDialog({ open, onClose, onSave, modulo, bloqueId }) {
@@ -89,16 +96,16 @@ function ModuloFormDialog({ open, onClose, onSave, modulo, bloqueId }) {
   );
 }
 
-function BloqueFormDialog({ open, onClose, onSave, bloque, bateriaId }) {
+function BloqueFormDialog({ open, onClose, onSave, bloque, programaId }) {
   const [form, setForm] = useState(initialBloqueFormState);
 
   useEffect(() => {
     if (bloque) {
       setForm(bloque);
     } else {
-      setForm({ ...initialBloqueFormState, bateria: bateriaId });
+      setForm({ ...initialBloqueFormState, programa: programaId });
     }
-  }, [bloque, bateriaId, open]);
+  }, [bloque, programaId, open]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -125,48 +132,6 @@ function BloqueFormDialog({ open, onClose, onSave, bloque, bateriaId }) {
     </Dialog>
   );
 }
-
-function BateriaFormDialog({ open, onClose, onSave, bateria, programaId }) {
-  const [form, setForm] = useState(initialBateriaFormState);
-
-  useEffect(() => {
-    if (bateria) {
-      setForm(bateria);
-    } else {
-      setForm({ ...initialBateriaFormState, programa: programaId });
-    }
-  }, [bateria, programaId, open]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSave = () => {
-    onSave(form);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{bateria ? 'Editar Batería' : 'Añadir Batería'}</DialogTitle>
-      <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}><TextField name="nombre" label="Nombre de la Batería" fullWidth value={form.nombre} onChange={handleChange} /></Grid>
-          <Grid item xs={12}><TextField name="orden" label="Orden" type="number" fullWidth value={form.orden} onChange={handleChange} /></Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button onClick={handleSave} variant="contained">{bateria ? 'Guardar Cambios' : 'Añadir'}</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-const initialProgramaFormState = {
-  nombre: '',
-  codigo: '',
-};
 
 function ProgramaFormDialog({ open, onClose, onSave, programa }) {
   const [form, setForm] = useState(initialProgramaFormState);
@@ -237,12 +202,11 @@ function ModuloItem({ modulo, onEdit, onDelete }) {
 }
 
 function BloqueAccordion({ bloque, expanded, onChange, onAddModulo, onEditBloque, onDeleteBloque, onEditModulo, onDeleteModulo }) {
-
   return (
-    <Accordion expanded={expanded} onChange={onChange} sx={{ mt: 1, mb: 1, bgcolor: 'grey.50' }}>
+    <Accordion expanded={expanded} onChange={onChange} sx={{ mt: 1, mb: 1, bgcolor: 'grey.100' }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-          <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>Bloque: {bloque.nombre}</Typography>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>Bloque: {bloque.nombre}</Typography>
           <Tooltip title="Añadir Módulo">
             <IconButton size="small" onClick={(e) => { e.stopPropagation(); onAddModulo(bloque.id); }}>
               <AddRoundedIcon />
@@ -275,67 +239,16 @@ function BloqueAccordion({ bloque, expanded, onChange, onAddModulo, onEditBloque
   );
 }
 
-function BateriaAccordion({ bateria, expanded, onChange, onAddBloque, onEditBateria, onDeleteBateria, onAddModulo, onEditBloque, onDeleteBloque, onEditModulo, onDeleteModulo, expandedBloque, handleBloqueChange }) {
-
-  return (
-    <Accordion expanded={expanded} onChange={onChange} sx={{ mt: 1, mb: 1, bgcolor: 'grey.100' }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>Batería: {bateria.nombre}</Typography>
-          <Tooltip title="Añadir Bloque">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onAddBloque(bateria.id); }}>
-              <AddRoundedIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Editar Batería">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEditBateria(bateria); }}>
-              <EditOutlinedIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Eliminar Batería">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDeleteBateria(bateria); }}>
-              <DeleteOutlineRoundedIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </AccordionSummary>
-      <AccordionDetails>
-        {bateria.bloques.length === 0 ? (
-          <Typography>No hay bloques en esta batería.</Typography>
-        ) : (
-          bateria.bloques.map((bloque) => (
-            <BloqueAccordion 
-              key={bloque.id} 
-              bloque={bloque} 
-              expanded={expandedBloque === `bloque-${bloque.id}`}
-              onChange={handleBloqueChange(`bloque-${bloque.id}`)}
-              onAddModulo={onAddModulo}
-              onEditBloque={(b) => onEditBloque(b, bateria.id)}
-              onDeleteBloque={onDeleteBloque}
-              onEditModulo={onEditModulo}
-              onDeleteModulo={onDeleteModulo}
-            />
-          ))
-        )}
-      </AccordionDetails>
-    </Accordion>
-  );
-}
-
 export default function Estructura() {
   const [programas, setProgramas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedProgram, setExpandedProgram] = useState(false);
-  const [expandedBateria, setExpandedBateria] = useState(false);
   const [expandedBloque, setExpandedBloque] = useState(false);
   const [openModuloDialog, setOpenModuloDialog] = useState(false);
   const [currentModulo, setCurrentModulo] = useState(null);
   const [parentBloqueId, setParentBloqueId] = useState(null);
   const [openBloqueDialog, setOpenBloqueDialog] = useState(false);
   const [currentBloque, setCurrentBloque] = useState(null);
-  const [parentBateriaId, setParentBateriaId] = useState(null);
-  const [openBateriaDialog, setOpenBateriaDialog] = useState(false);
-  const [currentBateria, setCurrentBateria] = useState(null);
   const [parentProgramaId, setParentProgramaId] = useState(null);
   const [openProgramaDialog, setOpenProgramaDialog] = useState(false);
   const [currentPrograma, setCurrentPrograma] = useState(null);
@@ -365,11 +278,7 @@ export default function Estructura() {
 
   const handleProgramChange = (panel) => (event, isExpanded) => {
     setExpandedProgram(isExpanded ? panel : false);
-    setExpandedBateria(false); // Colapsar baterías al cambiar de programa
-  };
-
-  const handleBateriaChange = (panel) => (event, isExpanded) => {
-    setExpandedBateria(isExpanded ? panel : false);
+    setExpandedBloque(false);
   };
 
   const handleBloqueChange = (panel) => (event, isExpanded) => {
@@ -425,15 +334,15 @@ export default function Estructura() {
   };
 
   // Bloque CRUD Handlers
-  const handleAddBloque = (bateriaId) => {
+  const handleAddBloque = (programaId) => {
     setCurrentBloque(null);
-    setParentBateriaId(bateriaId);
+    setParentProgramaId(programaId);
     setOpenBloqueDialog(true);
   };
 
-  const handleEditBloque = (bloque, bateriaId) => {
+  const handleEditBloque = (bloque, programaId) => {
     setCurrentBloque(bloque);
-    setParentBateriaId(bateriaId); 
+    setParentProgramaId(programaId); 
     setOpenBloqueDialog(true);
   };
 
@@ -452,11 +361,11 @@ export default function Estructura() {
   const handleSaveBloque = async (bloqueData) => {
     try {
       if (bloqueData.id) {
-        const payload = { ...bloqueData, bateria: parentBateriaId };
+        const payload = { ...bloqueData, programa: parentProgramaId };
         await api.put(`/bloques/${bloqueData.id}/`, payload);
         setFeedback({ open: true, message: 'Bloque actualizado con éxito', severity: 'success' });
       } else {
-        await api.post('/bloques/', { ...bloqueData, bateria: parentBateriaId });
+        await api.post('/bloques/', { ...bloqueData, programa: parentProgramaId });
         setFeedback({ open: true, message: 'Bloque añadido con éxito', severity: 'success' });
       }
       setOpenBloqueDialog(false);
@@ -470,54 +379,6 @@ export default function Estructura() {
   const handleCloseBloqueDialog = () => {
     setOpenBloqueDialog(false);
     setCurrentBloque(null);
-    setParentBateriaId(null);
-  };
-
-  // Bateria CRUD Handlers
-  const handleAddBateria = (programaId) => {
-    setCurrentBateria(null);
-    setParentProgramaId(programaId);
-    setOpenBateriaDialog(true);
-  };
-
-  const handleEditBateria = (bateria) => {
-    setCurrentBateria(bateria);
-    setParentProgramaId(bateria.programa); 
-    setOpenBateriaDialog(true);
-  };
-
-  const handleDeleteBateria = async (bateria) => {
-    if (!window.confirm(`¿Estás seguro de eliminar la batería ${bateria.nombre}?`)) return;
-    try {
-      await api.delete(`/baterias/${bateria.id}/`);
-      setFeedback({ open: true, message: 'Batería eliminada con éxito', severity: 'success' });
-      fetchProgramas();
-    } catch (error) {
-      const errorMsg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-      setFeedback({ open: true, message: `Error al eliminar batería: ${errorMsg}`, severity: 'error' });
-    }
-  };
-
-  const handleSaveBateria = async (bateriaData) => {
-    try {
-      if (bateriaData.id) {
-        await api.put(`/baterias/${bateriaData.id}/`, bateriaData);
-        setFeedback({ open: true, message: 'Batería actualizada con éxito', severity: 'success' });
-      } else {
-        await api.post('/baterias/', { ...bateriaData, programa: parentProgramaId });
-        setFeedback({ open: true, message: 'Batería añadida con éxito', severity: 'success' });
-      }
-      setOpenBateriaDialog(false);
-      fetchProgramas();
-    } catch (error) {
-      const errorMsg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-      setFeedback({ open: true, message: `Error al guardar batería: ${errorMsg}`, severity: 'error' });
-    }
-  };
-
-  const handleCloseBateriaDialog = () => {
-    setOpenBateriaDialog(false);
-    setCurrentBateria(null);
     setParentProgramaId(null);
   };
 
@@ -585,7 +446,7 @@ export default function Estructura() {
         <Typography variant="h5">Editor de Estructura de Cursos</Typography>
         <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={handleAddPrograma}>Añadir Programa</Button>
       </Box>
-      <Typography color="text.secondary" sx={{ mb: 4 }}>Gestiona la jerarquía de tus programas, baterías, bloques y módulos.</Typography>
+      <Typography color="text.secondary" sx={{ mb: 4 }}>Gestiona la jerarquía de tus programas, bloques y módulos.</Typography>
 
       <Box>
         {programas.length === 0 ? (
@@ -596,8 +457,8 @@ export default function Estructura() {
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                   <Typography variant="h6" sx={{ flexGrow: 1 }}>{programa.codigo} - {programa.nombre}</Typography>
-                  <Tooltip title="Añadir Batería">
-                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleAddBateria(programa.id); }}>
+                  <Tooltip title="Añadir Bloque">
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleAddBloque(programa.id); }}>
                       <AddRoundedIcon />
                     </IconButton>
                   </Tooltip>
@@ -614,25 +475,20 @@ export default function Estructura() {
                 </Box>
               </AccordionSummary>
               <AccordionDetails>
-                {programa.baterias.length === 0 ? (
-                  <Typography>No hay baterías en este programa.</Typography>
+                {programa.bloques.length === 0 ? (
+                  <Typography>No hay bloques en este programa.</Typography>
                 ) : (
-                  programa.baterias.map((bateria) => (
-                    <BateriaAccordion 
-                      key={bateria.id} 
-                      bateria={bateria} 
-                      expanded={expandedBateria === `bateria-${bateria.id}`}
-                      onChange={handleBateriaChange(`bateria-${bateria.id}`)}
-                      onAddBloque={handleAddBloque}
-                      onEditBateria={handleEditBateria}
-                      onDeleteBateria={handleDeleteBateria}
+                  programa.bloques.map((bloque) => (
+                    <BloqueAccordion 
+                      key={bloque.id} 
+                      bloque={bloque} 
+                      expanded={expandedBloque === `bloque-${bloque.id}`}
+                      onChange={handleBloqueChange(`bloque-${bloque.id}`)}
                       onAddModulo={handleAddModulo}
-                      onEditBloque={handleEditBloque}
+                      onEditBloque={(b) => handleEditBloque(b, programa.id)}
                       onDeleteBloque={handleDeleteBloque}
                       onEditModulo={handleEditModulo}
                       onDeleteModulo={handleDeleteModulo}
-                      expandedBloque={expandedBloque}
-                      handleBloqueChange={handleBloqueChange}
                     />
                   ))
                 )}
@@ -657,15 +513,6 @@ export default function Estructura() {
         onClose={handleCloseBloqueDialog} 
         onSave={handleSaveBloque} 
         bloque={currentBloque}
-        bateriaId={parentBateriaId}
-      />
-
-      {/* Bateria Form Dialog */}
-      <BateriaFormDialog 
-        open={openBateriaDialog} 
-        onClose={handleCloseBateriaDialog} 
-        onSave={handleSaveBateria} 
-        bateria={currentBateria}
         programaId={parentProgramaId}
       />
 

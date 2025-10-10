@@ -12,8 +12,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 from core.views import (
-    EstudianteViewSet, ProgramaViewSet, BateriaViewSet, BloqueViewSet, ModuloViewSet, ExamenViewSet, NotaViewSet, AsistenciaViewSet, KPIViewSet, InscripcionViewSet, ImportInscripcionesViewSet, ImportAsistenciaViewSet, ImportNotasViewSet, DashboardStatsView, UserView, EstructuraProgramaView,
-    BloqueDeFechasViewSet, SemanaConfigViewSet, CohorteViewSet, HistoricoCursoView, LogoutView,
+    EstudianteViewSet, ProgramaViewSet, BloqueViewSet, ModuloViewSet, ExamenViewSet, NotaViewSet, AsistenciaViewSet, KPIViewSet, InscripcionViewSet, ImportInscripcionesViewSet, ImportAsistenciaViewSet, ImportNotasViewSet, DashboardStatsView, UserView, EstructuraProgramaView, ChangePasswordView,
+    BloqueDeFechasViewSet, SemanaConfigViewSet, CohorteViewSet, HistoricoCursoView, LogoutView, UserViewSet, GroupViewSet,
     AnalyticsEnrollmentsView, AnalyticsAttendanceView, AnalyticsGradesView, AnalyticsDropoutView, AnalyticsGraduatesView,
     CoursesGraphView
 )
@@ -22,7 +22,6 @@ router = DefaultRouter()
 router.register(r"estudiantes", EstudianteViewSet, basename="estudiantes")
 router.register(r"programas", ProgramaViewSet, basename="programas")
 router.register(r"cohortes", CohorteViewSet, basename="cohortes")
-router.register(r"baterias", BateriaViewSet, basename="baterias")
 router.register(r"bloques", BloqueViewSet, basename="bloques")
 router.register(r"modulos", ModuloViewSet, basename="modulos")
 router.register(r"examenes", ExamenViewSet, basename="examenes")
@@ -35,11 +34,14 @@ router.register(r"import-asistencia", ImportAsistenciaViewSet, basename="import-
 router.register(r"import-notas", ImportNotasViewSet, basename="import-notas")
 router.register(r"bloques-de-fechas", BloqueDeFechasViewSet, basename="bloques-de-fechas")
 router.register(r"semanas-config", SemanaConfigViewSet, basename="semanas-config")
+router.register(r"users", UserViewSet, basename="users")
+router.register(r"groups", GroupViewSet, basename="groups")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/dashboard-stats/", DashboardStatsView.as_view(), name="dashboard-stats"),
     path("api/user/", UserView.as_view(), name="user-details"),
+    path("api/user/change-password/", ChangePasswordView.as_view(), name="user-change-password"),
     path("api/estructura/", EstructuraProgramaView.as_view(), name="estructura-programa"),
     path("api/historico-cursos/", HistoricoCursoView.as_view(), name="historico-cursos"),
     path("api/analytics/enrollments/", AnalyticsEnrollmentsView.as_view(), name="analytics-enrollments"),

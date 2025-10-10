@@ -5,7 +5,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc'; // Import the UTC plugin
 import apiClient from '../services/apiClient';
+import { listInscripciones } from '../services/inscripcionesService';
+import { listNotas } from '../services/notasService';
+dayjs.extend(utc); // Extend dayjs with the UTC plugin
 
 // These functions are needed by CreateNotaModal
 async function fetchExamenesByModulo(moduloId) {
@@ -33,6 +37,63 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
   const [estructura, setEstructura] = useState(null);
   const [examenes, setExamenes] = useState([]);
   const [existingNote, setExistingNote] = useState(null);
+  const [studentEnrollments, setStudentEnrollments] = useState([]);
+  const [approvedModuleExamTypes, setApprovedModuleExamTypes] = useState(new Set());
+  const [studentApprovedModuleIds, setStudentApprovedModuleIds] = useState(new Set());
+  const [loading, setLoading] = useState(false);
+
+  // Fetch student enrollments
+  useEffect(() => {
+    if (!studentId) {
+      setStudentEnrollments([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { results } = await listInscripciones({ estudiante: studentId, estado: 'ACTIVO', page_size: 500 });
+        setStudentEnrollments(results || []);
+      } catch (error) {
+        console.error("Error fetching student enrollments:", error);
+        setStudentEnrollments([]);
+      }
+    })();
+  }, [studentId]);
+
+  // Fetch approved module exam types for the selected student and module
+  useEffect(() => {
+    if (!studentId || !modulo) {
+      setApprovedModuleExamTypes(new Set());
+      return;
+    }
+    (async () => {
+      try {
+        const { results } = await listNotas({ estudiante: studentId, examen__modulo: modulo, aprobado: true, page_size: 500 });
+        const approvedTypes = new Set(results.map(nota => nota.examen_tipo_examen));
+        setApprovedModuleExamTypes(approvedTypes);
+      } catch (error) {
+        console.error("Error fetching approved module exam types:", error);
+        setApprovedModuleExamTypes(new Set());
+      }
+    })();
+  }, [studentId, modulo]);
+
+  // Fetch all approved module IDs for the student
+  useEffect(() => {
+    if (!studentId) {
+      setStudentApprovedModuleIds(new Set());
+      return;
+    }
+    (async () => {
+      try {
+        const { results } = await listNotas({ estudiante: studentId, aprobado: true, page_size: 500 });
+        const approvedModIds = new Set(results.map(nota => nota.examen_modulo_id).filter(Boolean));
+        setStudentApprovedModuleIds(approvedModIds);
+      } catch (error) {
+        console.error("Error fetching all approved module IDs:", error);
+        setStudentApprovedModuleIds(new Set());
+      }
+    })();
+  }, [studentId]);
 
   useEffect(() => {
     if (!examen || !studentId) {
@@ -41,8 +102,8 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
     }
     (async () => {
       const { data } = await apiClient.get('/notas/', { params: { estudiante: studentId, examen: examen, aprobado: true } });
-      if (data.length > 0) {
-        setExistingNote(data[0]);
+      if (data.results && data.results.length > 0) {
+        setExistingNote(data.results[0]);
       } else {
         setExistingNote(null);
       }
@@ -76,22 +137,54 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
   }, [modulo]);
 
   useEffect(() => {
-    if (modulo) {
-      (async () => {
-        const data = await fetchExamenesByModulo(modulo);
-        setExamenes(data || []);
-      })();
-    } else if (bloque) {
-      (async () => {
-        const data = await fetchExamenesFinalesByBloque(bloque);
-        setExamenes(data || []);
-      })();
-    } else {
-      setExamenes([]);
-    }
-  }, [modulo, bloque]);
+    const fetchAndFilterExams = async () => {
+      let fetchedExams = [];
+      let isFinalExamsForSingleModuleBlock = false;
+
+      if (modulo) {
+        // Always fetch partial/recuperatorio for a specific module
+        fetchedExams = await fetchExamenesByModulo(modulo);
+      } else if (bloque) {
+        const currentBloque = estructura?.bloques.find(b => b.id === Number(bloque));
+        if (currentBloque && currentBloque.modulos && currentBloque.modulos.length === 1) {
+          // If block has only one module, treat its exams as final exams
+          isFinalExamsForSingleModuleBlock = true;
+          fetchedExams = await fetchExamenesFinalesByBloque(bloque);
+        } else {
+          // Otherwise, fetch final exams for the block (normal multi-module block)
+          fetchedExams = await fetchExamenesFinalesByBloque(bloque);
+        }
+      } else {
+        setExamenes([]);
+        return;
+      }
+
+      let filteredExams = fetchedExams || [];
+
+      // Rule 1: If a PARCIAL is approved for a module, don't show PARCIAL as an option
+      if (modulo && approvedModuleExamTypes.has('PARCIAL')) {
+        filteredExams = filteredExams.filter(ex => ex.tipo_examen !== 'PARCIAL');
+      }
+
+      // Rule 2: For multi-module blocks, only show final exams if all modules are approved
+      if (bloque && !modulo && !isFinalExamsForSingleModuleBlock) { // Only for multi-module blocks
+        const currentBloque = estructura?.bloques.find(b => b.id === Number(bloque));
+        if (currentBloque && currentBloque.modulos) {
+          const allModuleIdsInBlock = new Set(currentBloque.modulos.map(m => m.id));
+          const allModulesApproved = Array.from(allModuleIdsInBlock).every(modId => studentApprovedModuleIds.has(modId));
+
+          if (!allModulesApproved) {
+            filteredExams = filteredExams.filter(ex => !['FINAL_VIRTUAL', 'FINAL_SINC', 'EQUIVALENCIA'].includes(ex.tipo_examen));
+          }
+        }
+      }
+      setExamenes(filteredExams);
+    };
+    fetchAndFilterExams();
+  }, [modulo, bloque, approvedModuleExamTypes, studentApprovedModuleIds, estructura]); // Dependencies
 
   const handleSave = async () => {
+    setLoading(true);
     const payload = {
       estudiante: studentId,
       examen: examen,
@@ -107,14 +200,27 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
     } catch (error) {
       console.error("Error creating note:", error);
       alert('Error al crear la nota. Revise la consola para más detalles.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const bloquesOptions = useMemo(() => estructura?.baterias.flatMap(b => b.bloques) || [], [estructura]);
-  const modulosOptions = useMemo(() => {
+  // Filter options based on student enrollments
+  const enrolledProgramIds = useMemo(() => new Set(studentEnrollments.map(e => e.cohorte?.programa?.id).filter(Boolean)), [studentEnrollments]);
+  const filteredCursos = useMemo(() => cursos.filter(c => enrolledProgramIds.has(c.id)), [cursos, enrolledProgramIds]);
+
+  const enrolledBloqueIds = useMemo(() => new Set(studentEnrollments.map(e => e.modulo?.bloque?.id).filter(Boolean)), [studentEnrollments]);
+  const filteredBloquesOptions = useMemo(() => {
+    if (!estructura) return [];
+    return estructura.bloques.filter(b => enrolledBloqueIds.has(b.id));
+  }, [estructura, enrolledBloqueIds]);
+
+  const enrolledModuloIds = useMemo(() => new Set(studentEnrollments.map(e => e.modulo?.id).filter(Boolean)), [studentEnrollments]);
+  const filteredModulosOptions = useMemo(() => {
     if (!bloque) return [];
-    return bloquesOptions.find(b => b.id === Number(bloque))?.modulos || [];
-  }, [bloque, bloquesOptions]);
+    const allModulosInBloque = filteredBloquesOptions.find(b => b.id === Number(bloque))?.modulos || [];
+    return allModulosInBloque.filter(m => enrolledModuloIds.has(m.id));
+  }, [bloque, filteredBloquesOptions, enrolledModuloIds]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -124,19 +230,19 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
           <Grid item xs={12}>
             <TextField fullWidth select SelectProps={{ native: true }} label="Curso" value={curso} onChange={e => setCurso(e.target.value)}>
               <option value=""></option>
-              {cursos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {filteredCursos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </TextField>
           </Grid>
           <Grid item xs={12} md={6}>
             <TextField fullWidth select SelectProps={{ native: true }} label="Bloque" value={bloque} onChange={e => setBloque(e.target.value)} disabled={!curso}>
               <option value=""></option>
-              {bloquesOptions.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+              {filteredBloquesOptions.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
             </TextField>
           </Grid>
           <Grid item xs={12} md={6}>
             <TextField fullWidth select SelectProps={{ native: true }} label="Módulo" value={modulo} onChange={e => setModulo(e.target.value)} disabled={!bloque}>
               <option value=""></option>
-              {modulosOptions.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              {filteredModulosOptions.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
             </TextField>
           </Grid>
           <Grid item xs={12}>
@@ -162,8 +268,8 @@ function CreateNotaModal({ open, onClose, studentId, cursos, onSave }) {
         </Grid>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button onClick={handleSave} variant="contained" disabled={!examen || !calificacion || existingNote}>Guardar</Button>
+        <Button onClick={onClose} disabled={loading}>Cancelar</Button>
+        <Button onClick={handleSave} variant="contained" disabled={!examen || !calificacion || existingNote || loading}>Guardar</Button>
       </DialogActions>
     </Dialog>
   );
@@ -176,6 +282,7 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
   const [editingNotaId, setEditingNotaId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleEditClick = (nota) => {
     setEditingNotaId(nota.id);
@@ -197,6 +304,7 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
   };
 
   const handleUpdate = async (notaId) => {
+    setLoading(true);
     try {
       const originalNota = historial.find(n => n.id === notaId);
       if (!originalNota) {
@@ -218,11 +326,14 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
     } catch (error) {
       console.error("Error updating note:", error.response?.data || error.message);
       alert('Error al actualizar la nota.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async (notaId) => {
     if (window.confirm('¿Estás seguro de que quieres eliminar esta nota?')) {
+      setLoading(true);
       try {
         await apiClient.delete(`/notas/${notaId}/`);
         setHistorial(prev => prev.filter(n => n.id !== notaId));
@@ -230,6 +341,8 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
       } catch (error) {
         console.error("Error deleting note:", error);
         alert('Error al eliminar la nota. Revise la consola para más detalles.');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -328,7 +441,7 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
                   <Grid item xs={3}>{h.examen_bloque_nombre || 'N/A'} / {h.examen_modulo_nombre || 'N/A'}</Grid>
                   <Grid item xs={2}>{h.examen_tipo_examen}</Grid>
                   <Grid item xs={1}><TextField size="small" name="calificacion" value={editFormData.calificacion} onChange={handleFormChange} sx={{ width: '100%' }}/></Grid>
-                  <Grid item xs={2}><TextField size="small" type="date" name="fecha_calificacion" value={editFormData.fecha_calificacion} onChange={handleFormChange} sx={{ width: '100%' }}/></Grid>
+                  <Grid item xs={2}><TextField size="small" type="date" name="fecha_calificacion" value={editFormData.fecha_calificacion} onChange={handleFormChange} InputLabelProps={{ shrink: true }} sx={{ width: '100%' }}/></Grid>
                   <Grid item xs={1}>
                     <Tooltip title="Guardar"><IconButton size="small" color="primary" onClick={() => handleUpdate(h.id)}><CheckIcon fontSize="inherit"/></IconButton></Tooltip>
                     <Tooltip title="Cancelar"><IconButton size="small" onClick={handleCancelClick}><CloseIcon fontSize="inherit"/></IconButton></Tooltip>
@@ -341,7 +454,7 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
                   <Grid item xs={readOnly ? 4 : 3}>{h.examen_bloque_nombre || 'N/A'} / {h.examen_modulo_nombre || 'N/A'}</Grid>
                   <Grid item xs={2}>{h.examen_tipo_examen}</Grid>
                   <Grid item xs={1}>{h.calificacion}</Grid>
-                  <Grid item xs={2}>{dayjs(h.fecha_calificacion).format('DD/MM/YYYY')}</Grid>
+                  <Grid item xs={2}>{dayjs.utc(h.fecha_calificacion).format('DD/MM/YYYY')}</Grid>
                   {!readOnly && (
                     <Grid item xs={1}>
                       <Tooltip title="Editar"><IconButton size="small" onClick={() => handleEditClick(h)}><EditIcon fontSize="inherit"/></IconButton></Tooltip>
@@ -368,7 +481,7 @@ export default function HistorialAcademico({ historial, setHistorial, selEstudia
         // Refetch history after saving
         (async () => {
           const { data } = await apiClient.get('/notas/', { params: { estudiante: selEstudiante } });
-          setHistorial(data);
+          setHistorial(data.results || data);
         })();
         setCreateModalOpen(false);
       }}

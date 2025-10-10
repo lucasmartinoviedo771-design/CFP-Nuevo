@@ -32,7 +32,7 @@ export default function HistoricoEstudiante() {
     }
     (async () => {
       const { data } = await apiClient.get('/notas/', { params: { estudiante: selEstudiante } });
-      setHistorial(data);
+      setHistorial(data.results || data);
     })();
   }, [selEstudiante]);
 

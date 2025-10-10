@@ -1,7 +1,9 @@
 
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, TextField, Container, Typography, Box } from '@mui/material';
+import { Button, TextField, Container, Typography, Box, IconButton, InputAdornment } from '@mui/material';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import authService from '../services/authService';
 import { UserContext } from '../App'; // Import UserContext
 
@@ -9,17 +11,27 @@ const Login = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const { setUser } = useContext(UserContext); // Use setUser from UserContext
+
+    const handleClickShowPassword = () => setShowPassword((show) => !show);
+    const handleMouseDownPassword = (event) => {
+      event.preventDefault();
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
         try {
             await authService.login(username, password);
-            const userData = await authService.getUserDetails(); // Fetch user details after successful login
-            setUser(userData); // Update user in context
-            navigate('/dashboard');
+            const userData = await authService.getUserDetails();
+            setUser(userData);
+            if (userData?.must_change_password) {
+              navigate('/set-password');
+            } else {
+              navigate('/dashboard');
+            }
         } catch (err) {
             setError(err.message || 'Failed to login. Please check your credentials.');
         }
@@ -57,11 +69,25 @@ const Login = () => {
                         fullWidth
                         name="password"
                         label="Password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         id="password"
                         autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                aria-label="toggle password visibility"
+                                onClick={handleClickShowPassword}
+                                onMouseDown={handleMouseDownPassword}
+                                edge="end"
+                              >
+                                {showPassword ? <VisibilityOff /> : <Visibility />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
                     />
                     {error && (
                         <Typography color="error" variant="body2" align="center">

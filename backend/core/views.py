@@ -1,5 +1,5 @@
 # backend/core/views.py
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.views import APIView
 from datetime import timedelta, datetime
 from django.db import transaction
@@ -18,11 +18,13 @@ from io import StringIO
 import json
 
 from .models import (
-    Estudiante, Programa, Bateria, Bloque, Modulo, Examen, Nota, Asistencia, Inscripcion,
+    Estudiante, Programa, Bloque, Modulo, Examen, Nota, Asistencia, Inscripcion,
     BloqueDeFechas, SemanaConfig, Cohorte
 )
 from .serializers import (
     ProgramaSerializer,
+    ProgramaDetailSerializer,
+    BloqueDetailSerializer,
     CohorteSerializer,
     EstudianteSerializer,
     InscripcionSerializer,
@@ -31,181 +33,97 @@ from .serializers import (
     ExamenSerializer,
     NotaSerializer,
     AsistenciaSerializer,
-    BateriaSerializer,
     BloqueDeFechasSerializer,
-    SemanaConfigSerializer
+    SemanaConfigSerializer,
+    ChangePasswordSerializer,
+    UserSerializer,
+    GroupSerializer
 )
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django_filters import rest_framework as filters
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import OrderingFilter
 from django.utils.dateparse import parse_date
 from django.utils import timezone
-
-class HistoricoCursoView(APIView):
-    def get(self, request, *args, **kwargs):
-        cohorte_id = request.query_params.get('cohorte_id')
-        tipo_dato = request.query_params.get('tipo_dato')
-
-        if not cohorte_id:
-            return Response(
-                {"error": "El parámetro 'cohorte_id' es requerido."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        inscripciones = Inscripcion.objects.filter(cohorte_id=cohorte_id).select_related('estudiante')
-        estudiantes = [inscripcion.estudiante for inscripcion in inscripciones]
-
-        # Lógica para procesar según tipo_dato
-        if tipo_dato == 'notas':
-            # Aquí irá la lógica para las notas
-            data = self.get_data_notas(estudiantes, cohorte_id)
-        elif tipo_dato == 'asistencia':
-            # Aquí irá la lógica para la asistencia
-            data = self.get_data_asistencia(estudiantes, cohorte_id)
-        else:
-            # Por defecto, o si no se especifica, podemos devolver solo los estudiantes
-            serializer = EstudianteSerializer(estudiantes, many=True)
-            data = serializer.data
-
-        return Response(data)
-
-    def get_data_notas(self, estudiantes, cohorte_id):
-        # Obtener todos los módulos y bloques de la cohorte
-        cohorte = Cohorte.objects.get(id=cohorte_id)
-        programa = cohorte.programa
-        baterias = programa.baterias.all()
-        bloques = Bloque.objects.filter(bateria__in=baterias)
-        modulos = Modulo.objects.filter(bloque__in=bloques)
-
-        # Obtener todos los exámenes para esos módulos y bloques
-        examenes = Examen.objects.filter(models.Q(modulo__in=modulos) | models.Q(bloque__in=bloques)).order_by('bloque__orden', 'modulo__orden')
-        
-        # Crear los encabezados para la tabla
-        headers = ['ID', 'Apellido', 'Nombre', 'DNI']
-        examen_headers = []
-        for ex in examenes:
-            header_name = f"{ex.tipo_examen.capitalize()} - {ex.modulo.nombre if ex.modulo else ex.bloque.nombre}"
-            examen_headers.append(header_name)
-        headers.extend(examen_headers)
-
-        # Obtener todas las notas de una vez para eficiencia
-        notas_qs = Nota.objects.filter(estudiante__in=estudiantes, examen__in=examenes).select_related('examen', 'estudiante')
-        
-        # Organizar notas por estudiante
-        notas_por_estudiante = {}
-        for nota in notas_qs:
-            if nota.estudiante_id not in notas_por_estudiante:
-                notas_por_estudiante[nota.estudiante_id] = {}
-            header_name = f"{nota.examen.tipo_examen.capitalize()} - {nota.examen.modulo.nombre if nota.examen.modulo else nota.examen.bloque.nombre}"
-            notas_por_estudiante[nota.estudiante_id][header_name] = nota.calificacion
-
-        # Construir la data final
-        results = []
-        for est in estudiantes:
-            est_data = {
-                'ID': est.id,
-                'Apellido': est.apellido,
-                'Nombre': est.nombre,
-                'DNI': est.dni,
-            }
-            # Agregar notas, o None si no existen
-            for header in examen_headers:
-                est_data[header] = notas_por_estudiante.get(est.id, {}).get(header, None)
-            
-            results.append(est_data)
-
-        return {
-            'headers': headers,
-            'rows': results
-        }
-
-    def get_data_asistencia(self, estudiantes, cohorte_id):
-        from datetime import timedelta
-
-        cohorte = Cohorte.objects.get(id=cohorte_id)
-        modulos = Modulo.objects.filter(bloque__bateria__programa=cohorte.programa).order_by('bloque__orden', 'orden')
-
-        if not modulos.exists():
-            return {'headers': ['ID', 'Apellido', 'Nombre', 'DNI'], 'rows': []}
-
-        # Asumimos que las semanas se cuentan desde el inicio del primer módulo
-        fecha_inicio_curso = modulos.first().fecha_inicio or cohorte.bloque_fechas.fecha_inicio
-
-        asistencias_qs = Asistencia.objects.filter(estudiante__in=estudiantes, modulo__in=modulos)
-
-        asistencia_por_estudiante = {}
-        for asistencia in asistencias_qs:
-            if asistencia.estudiante_id not in asistencia_por_estudiante:
-                asistencia_por_estudiante[asistencia.estudiante_id] = {}
-            
-            # Calcular el número de semana
-            delta_dias = (asistencia.fecha - fecha_inicio_curso).days
-            nro_semana = (delta_dias // 7) + 1
-            
-            semana_key = f'Semana {nro_semana}'
-            if semana_key not in asistencia_por_estudiante[asistencia.estudiante_id]:
-                asistencia_por_estudiante[asistencia.estudiante_id][semana_key] = {'presente': 0, 'total': 0}
-            
-            if asistencia.presente:
-                asistencia_por_estudiante[asistencia.estudiante_id][semana_key]['presente'] += 1
-            asistencia_por_estudiante[asistencia.estudiante_id][semana_key]['total'] += 1
-
-        # Determinar el número máximo de semanas para los headers
-        max_semana = 0
-        for data_asistencia in asistencia_por_estudiante.values():
-            for semana_key in data_asistencia.keys():
-                nro = int(semana_key.split(' ')[1])
-                if nro > max_semana:
-                    max_semana = nro
-        
-        semana_headers = [f'Semana {i}' for i in range(1, max_semana + 1)]
-        headers = ['ID', 'Apellido', 'Nombre', 'DNI'] + semana_headers + ['% Asistencia']
-
-        results = []
-        for est in estudiantes:
-            est_data = {
-                'ID': est.id,
-                'Apellido': est.apellido,
-                'Nombre': est.nombre,
-                'DNI': est.dni,
-            }
-            total_presente = 0
-            total_clases = 0
-
-            for semana_header in semana_headers:
-                semana_data = asistencia_por_estudiante.get(est.id, {}).get(semana_header)
-                if semana_data:
-                    est_data[semana_header] = 'Presente' if semana_data['presente'] > 0 else 'Ausente' # Simplificado
-                    total_presente += semana_data['presente']
-                    total_clases += semana_data['total']
-                else:
-                    est_data[semana_header] = 'N/A'
-            
-            porcentaje = (total_presente / total_clases * 100) if total_clases > 0 else 0
-            est_data['% Asistencia'] = f'{porcentaje:.2f}%'
-            results.append(est_data)
-
-        return {
-            'headers': headers,
-            'rows': results
-        }
-
-from django_filters import rest_framework as filters # New import
-from django_filters.rest_framework import DjangoFilterBackend # New import
-
-from rest_framework.filters import OrderingFilter
+from django.contrib.auth.models import User, Group
+from .roles import can_assign_role, list_roles, IsInAGroup
 from .filters import EstudianteFilter
 
 class UserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response({'username': request.user.username})
+        groups = list(request.user.groups.values_list('name', flat=True))
+        must_change = getattr(getattr(request.user, 'profile', None), 'must_change_password', False)
+        return Response({'username': request.user.username, 'groups': groups, 'must_change_password': must_change})
+
+
+class ChangePasswordView(generics.UpdateAPIView):
+    """
+    An endpoint for changing password.
+    """
+    serializer_class = ChangePasswordSerializer
+    model = User
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_object(self, queryset=None):
+        obj = self.request.user
+        return obj
+
+    def update(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            # Check old password
+            if not self.object.check_password(serializer.data.get("current_password")):
+                return Response({"old_password": ["Wrong password."]}, status=status.HTTP_400_BAD_REQUEST)
+            # set_password also hashes the password that the user will get
+            self.object.set_password(serializer.data.get("new_password"))
+            self.object.save()
+
+            # Marcar que ya no es necesario cambiar la contraseña
+            if hasattr(self.object, 'profile'):
+                self.object.profile.must_change_password = False
+                self.object.profile.save()
+
+            response = {
+                'status': 'success',
+                'code': status.HTTP_200_OK,
+                'message': 'Password updated successfully',
+                'data': []
+            }
+
+            return Response(response)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HistoricoCursoView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
+
+    def get(self, request, *args, **kwargs):
+        return Response({'detail': 'HistoricoCurso endpoint no implementado en esta versión.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+
+class GroupViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Group.objects.all().order_by('name')
+    serializer_class = GroupSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by('username')
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAdminUser]
+
 
 class EstudianteViewSet(viewsets.ModelViewSet):
     queryset = Estudiante.objects.all().order_by("apellido", "nombre")
     serializer_class = EstudianteSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = EstudianteFilter
     ordering_fields = ['dni', 'apellido', 'nombre', 'email', 'ciudad', 'created_at']
@@ -225,7 +143,7 @@ class EstudianteViewSet(viewsets.ModelViewSet):
 class ProgramaViewSet(viewsets.ModelViewSet):
     queryset = Programa.objects.all()
     serializer_class = ProgramaSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filterset_fields = ["activo", "codigo"]
 
     def get_serializer_class(self):
@@ -233,19 +151,16 @@ class ProgramaViewSet(viewsets.ModelViewSet):
             return ProgramaDetailSerializer
         return super().get_serializer_class()
 
-from rest_framework.permissions import AllowAny
-
 class CohorteViewSet(viewsets.ModelViewSet):
     queryset = Cohorte.objects.select_related('programa', 'bloque_fechas').all()
     serializer_class = CohorteSerializer
-    permission_classes = [AllowAny] # Permitir acceso sin autenticación
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filterset_fields = ['programa', 'bloque_fechas']
 
 class BloqueDeFechasViewSet(viewsets.ModelViewSet):
     queryset = BloqueDeFechas.objects.all()
     serializer_class = BloqueDeFechasSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
 
     @action(detail=True, methods=['post'])
     def guardar_secuencia(self, request, pk=None):
@@ -299,20 +214,14 @@ class BloqueDeFechasViewSet(viewsets.ModelViewSet):
 class SemanaConfigViewSet(viewsets.ModelViewSet):
     queryset = SemanaConfig.objects.all()
     serializer_class = SemanaConfigSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filterset_fields = ['bloque']
-
-class BateriaViewSet(viewsets.ModelViewSet):
-    queryset = Bateria.objects.all()
-    serializer_class = BateriaSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filterset_fields = ["programa"]
 
 class BloqueViewSet(viewsets.ModelViewSet):
     queryset = Bloque.objects.all()
     serializer_class = BloqueSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filterset_fields = ["bateria"]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
+    filterset_fields = ["programa"]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -358,37 +267,37 @@ class ExamenFilter(filters.FilterSet):
 class ExamenViewSet(viewsets.ModelViewSet):
     queryset = Examen.objects.all()
     serializer_class = ExamenSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend]
     filterset_class = ExamenFilter
 
 class ModuloViewSet(viewsets.ModelViewSet):
     queryset = Modulo.objects.all()
     serializer_class = ModuloSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filterset_fields = ["bloque", "es_practica"]
 
 class NotaViewSet(viewsets.ModelViewSet):
     queryset = Nota.objects.select_related("examen", "estudiante", "examen__modulo")
     serializer_class = NotaSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filterset_fields = ["examen__modulo", "examen__bloque__bateria__programa", "examen__tipo_examen", "estudiante", "es_equivalencia", "aprobado"]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
+    filterset_fields = ["examen__modulo", "examen__bloque__programa", "examen__tipo_examen", "estudiante", "es_equivalencia", "aprobado"]
 
 class AsistenciaViewSet(viewsets.ModelViewSet):
     queryset = Asistencia.objects.select_related("estudiante", "modulo")
     serializer_class = AsistenciaSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filterset_fields = ["estudiante", "modulo", "fecha", "presente", "archivo_origen"]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
+    filterset_fields = ["estudiante", "modulo", "fecha", "presente", "archivo_origen", "modulo__bloque"]
 
 class InscripcionViewSet(viewsets.ModelViewSet):
-    queryset = Inscripcion.objects.select_related('cohorte__programa', 'cohorte__bloque_fechas', 'modulo').all()
+    queryset = Inscripcion.objects.select_related('cohorte__programa', 'cohorte__bloque_fechas', 'modulo__bloque').all()
     serializer_class = InscripcionSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup, permissions.DjangoModelPermissions]
     filterset_fields = ["estudiante", "cohorte", "estado", "cohorte__programa", "modulo", "modulo__bloque"]
 
 # KPIs
 class KPIViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     @action(detail=False, methods=["get"])
     def inscriptos(self, request):
@@ -448,7 +357,7 @@ class KPIViewSet(viewsets.ViewSet):
         })
 
 class ImportInscripcionesViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def create(self, request):
         file_obj = request.FILES.get('file')
@@ -474,14 +383,14 @@ class ImportInscripcionesViewSet(viewsets.ViewSet):
             os.remove(file_path)
 
 class ImportAsistenciaViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def create(self, request):
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create a temporary directory if it doesn\'t exist
+        # Create a temporary directory if it doesn't exist
         tmp_dir = os.path.join(settings.BASE_DIR, 'tmp_asistencia')
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -502,14 +411,14 @@ class ImportAsistenciaViewSet(viewsets.ViewSet):
             os.rmdir(tmp_dir)
 
 class ImportNotasViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def create(self, request):
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create a temporary directory if it doesn\'t exist
+        # Create a temporary directory if it doesn't exist
         tmp_dir = os.path.join(settings.BASE_DIR, 'tmp')
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -528,7 +437,7 @@ class ImportNotasViewSet(viewsets.ViewSet):
             os.remove(file_path)
 
 class EstructuraProgramaView(APIView):
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def get(self, request, format=None):
         programa_id = request.query_params.get('programa')
@@ -544,7 +453,7 @@ class EstructuraProgramaView(APIView):
         return Response(serializer.data)
 
 class DashboardStatsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def get(self, request, format=None):
         # KPIs Optimized
@@ -598,7 +507,7 @@ class DashboardStatsView(APIView):
 
 class AnalyticsEnrollmentsView(APIView):
     TTL = getattr(settings, 'ANALYTICS_CACHE_SECONDS', 300)
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
     @method_decorator(cache_page(TTL), name='dispatch')
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -643,7 +552,7 @@ class AnalyticsEnrollmentsView(APIView):
 
 class AnalyticsAttendanceView(APIView):
     TTL = getattr(settings, 'ANALYTICS_CACHE_SECONDS', 300)
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
     @method_decorator(cache_page(TTL), name='dispatch')
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -659,11 +568,11 @@ class AnalyticsAttendanceView(APIView):
         if cohorte_id:
             try:
                 cohorte = Cohorte.objects.get(id=cohorte_id)
-                qs = qs.filter(modulo__bloque__bateria__programa=cohorte.programa)
+                qs = qs.filter(modulo__bloque__programa=cohorte.programa)
             except Cohorte.DoesNotExist:
                 qs = qs.none()
         if programa_id and not cohorte_id:
-            qs = qs.filter(modulo__bloque__bateria__programa_id=programa_id)
+            qs = qs.filter(modulo__bloque__programa_id=programa_id)
         if date_from:
             df = parse_date(date_from)
             if df:
@@ -724,7 +633,7 @@ class AnalyticsAttendanceView(APIView):
 
 class AnalyticsGradesView(APIView):
     TTL = getattr(settings, 'ANALYTICS_CACHE_SECONDS', 300)
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
     @method_decorator(cache_page(TTL), name='dispatch')
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -742,15 +651,15 @@ class AnalyticsGradesView(APIView):
             try:
                 cohorte = Cohorte.objects.get(id=cohorte_id)
                 qs = qs.filter(
-                    Q(examen__modulo__bloque__bateria__programa=cohorte.programa) |
-                    Q(examen__bloque__bateria__programa=cohorte.programa)
+                    Q(examen__modulo__bloque__programa=cohorte.programa) |
+                    Q(examen__bloque__programa=cohorte.programa)
                 )
             except Cohorte.DoesNotExist:
                 qs = qs.none()
         if programa_id and not cohorte_id:
             qs = qs.filter(
-                Q(examen__modulo__bloque__bateria__programa_id=programa_id) |
-                Q(examen__bloque__bateria__programa_id=programa_id)
+                Q(examen__modulo__bloque__programa_id=programa_id) |
+                Q(examen__bloque__programa_id=programa_id)
             )
         if tipo_examen:
             qs = qs.filter(examen__tipo_examen=tipo_examen)
@@ -804,7 +713,7 @@ class AnalyticsGradesView(APIView):
 
 class AnalyticsDropoutView(APIView):
     TTL = getattr(settings, 'ANALYTICS_CACHE_SECONDS', 300)
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
     @method_decorator(cache_page(TTL), name='dispatch')
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -936,7 +845,7 @@ class CoursesGraphView(APIView):
       - programa_id (required)
       - cohorte_id (optional)
     """
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -949,62 +858,48 @@ class CoursesGraphView(APIView):
         except Programa.DoesNotExist:
             return Response({'detail': 'Programa not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        baterias = (
-            Bateria.objects.filter(programa=programa)
+        bloques = (
+            Bloque.objects.filter(programa=programa)
             .order_by('orden', 'id')
             .prefetch_related(
-                Prefetch(
-                    'bloques',
-                    queryset=Bloque.objects.order_by('orden', 'id').prefetch_related(
-                        Prefetch('modulos', queryset=Modulo.objects.order_by('orden', 'id'))
-                    )
-                )
+                Prefetch('modulos', queryset=Modulo.objects.order_by('orden', 'id'))
             )
         )
 
         tree = []
-        for bat in baterias:
-            bat_node = {
-                'type': 'bateria',
-                'id': bat.id,
-                'nombre': bat.nombre,
-                'orden': bat.orden,
+        for blo in bloques:
+            blo_node = {
+                'type': 'bloque',
+                'id': blo.id,
+                'nombre': blo.nombre,
+                'orden': blo.orden,
                 'children': [],
             }
-            for blo in bat.bloques.all():
-                blo_node = {
-                    'type': 'bloque',
-                    'id': blo.id,
-                    'nombre': blo.nombre,
-                    'orden': blo.orden,
-                    'children': [],
+            for mod in blo.modulos.all():
+                blo_node['children'].append({
+                    'type': 'modulo',
+                    'id': mod.id,
+                    'nombre': mod.nombre,
+                    'orden': mod.orden,
+                    'es_practica': mod.es_practica,
+                    'fecha_inicio': mod.fecha_inicio.isoformat() if mod.fecha_inicio else None,
+                    'fecha_fin': mod.fecha_fin.isoformat() if mod.fecha_fin else None,
+                })
+            # Examenes finales del bloque (final virtual/sincronico/equivalencia)
+            finales_qs = Examen.objects.filter(
+                bloque=blo,
+                tipo_examen__in=[Examen.FINAL_VIRTUAL, Examen.FINAL_SINC, Examen.EQUIVALENCIA]
+            ).order_by('fecha', 'id')
+            blo_node['finales'] = [
+                {
+                    'id': ex.id,
+                    'tipo_examen': ex.tipo_examen,
+                    'fecha': ex.fecha.isoformat() if ex.fecha else None,
+                    'peso': float(ex.peso),
                 }
-                for mod in blo.modulos.all():
-                    blo_node['children'].append({
-                        'type': 'modulo',
-                        'id': mod.id,
-                        'nombre': mod.nombre,
-                        'orden': mod.orden,
-                        'es_practica': mod.es_practica,
-                        'fecha_inicio': mod.fecha_inicio.isoformat() if mod.fecha_inicio else None,
-                        'fecha_fin': mod.fecha_fin.isoformat() if mod.fecha_fin else None,
-                    })
-                # Examenes finales del bloque (final virtual/sincronico/equivalencia)
-                finales_qs = Examen.objects.filter(
-                    bloque=blo,
-                    tipo_examen__in=[Examen.FINAL_VIRTUAL, Examen.FINAL_SINC, Examen.EQUIVALENCIA]
-                ).order_by('fecha', 'id')
-                blo_node['finales'] = [
-                    {
-                        'id': ex.id,
-                        'tipo_examen': ex.tipo_examen,
-                        'fecha': ex.fecha.isoformat() if ex.fecha else None,
-                        'peso': float(ex.peso),
-                    }
-                    for ex in finales_qs
-                ]
-                bat_node['children'].append(blo_node)
-            tree.append(bat_node)
+                for ex in finales_qs
+            ]
+            tree.append(blo_node)
 
         cohorte_data = None
         if cohorte_id:
@@ -1036,7 +931,7 @@ class AnalyticsGraduatesView(APIView):
     Filters:
       - programa_id or cohorte_id (one required)
     """
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsInAGroup]
 
     def get(self, request):
         programa_id = request.query_params.get('programa_id')
@@ -1062,7 +957,7 @@ class AnalyticsGraduatesView(APIView):
 
         # Required blocks for the program
         bloques_req = list(
-            Bloque.objects.filter(bateria__programa_id=programa_id).values_list('id', flat=True)
+            Bloque.objects.filter(programa_id=programa_id).values_list('id', flat=True)
         )
         total_bloques = len(bloques_req)
 

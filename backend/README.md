@@ -1,10 +1,10 @@
 # Backend (Django) ‚Äì Configuraci√≥n y Puesta en Marcha
 
-Este documento cubre variables de entorno, arranque local y notas de producci√≥n para el backend.
+Este documento cubre variables de entorno, arranque local y notas de producciÛn para el backend.
 
 ## Variables de Entorno (.env)
 
-El backend usa `django-environ` y carga variables desde `backend/.env` en desarrollo. En producci√≥n, configura variables del sistema.
+El backend usa `django-environ` y carga variables desde `backend/.env` en desarrollo. En producciÛn, configura variables del sistema.
 
 1) Copia el ejemplo: `backend/.env.example` ‚Üí `backend/.env`
 2) Ajusta valores (clave secreta, DB, CORS/CSRF, etc.)
@@ -38,26 +38,27 @@ Endpoints √∫tiles:
 - Tama√±o por defecto configurable por env: `DRF_PAGE_SIZE` (por defecto 25).
 - L√≠mite superior por env: `DRF_MAX_PAGE_SIZE` (por defecto 200).
 
-### Analytics & Cach√©
+### Analytics & CachÈ
 
 - Endpoints de anal√≠tica:
   - `GET /api/analytics/enrollments/` (series por mes)
   - `GET /api/analytics/attendance/` (por m√≥dulo o semana)
   - `GET /api/analytics/grades/` (tasa aprobaci√≥n e histograma)
   - `GET /api/analytics/dropout/` (deserci√≥n: regla A/B)
-- Cach√© por vista activada (por defecto 300s). Configurable con `ANALYTICS_CACHE_SECONDS`.
-- Backend de cach√© por defecto: locmem. Cambia `CACHE_BACKEND`/`CACHE_LOCATION` en `.env` para Memcached/Redis en producci√≥n.
+- CachÈ por vista activada (por defecto 300s). Configurable con `ANALYTICS_CachÈSECONDS`.
+- Backend de CachÈ por defecto: locmem. Cambia `CachÈBACKEND`/`CachÈLOCATION` en `.env` para MemCachÈ/Redis en producciÛn.
 
-## Notas de Producci√≥n
+## Notas de producciÛn
 
 - `DJANGO_DEBUG=False`, define `DJANGO_ALLOWED_HOSTS` con tu dominio
 - Configura CORS/CSRF con URLs reales (`https://...`) del frontend
 - Cookies seguras si usas HTTPS: `SESSION_COOKIE_SECURE=True`, `CSRF_COOKIE_SECURE=True`
-- Usa WSGI/ASGI (gunicorn/uvicorn) detr√°s de Nginx/Apache
+- Usa WSGI/ASGI (gunicorn/uvicorn) detr·s de Nginx/Apache
 - Gestiona variables de entorno en el host/orquestador (no `.env` en el repo)
 
-## Flujo de Autenticaci√≥n (Resumen)
+## Flujo de AutenticaciÛn (Resumen)
 
-- SimpleJWT con rotaci√≥n de refresh y blacklist habilitado
+- SimpleJWT con rotaciÛn de refresh y blacklist habilitado
 - El frontend renueva tokens en 401 y hace logout que revoca el refresh
 - `GET /api/user/` sirve para hidratar la UI con el usuario logueado
+

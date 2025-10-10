@@ -11,6 +11,7 @@ import Notas from "./pages/Notas";
 import CursoDetail from "./pages/CursoDetail";
 import DashboardPage from "./pages/Dashboard";
 import Login from "./pages/Login";
+import SetPassword from './pages/SetPassword';
 import Inscripciones from './pages/Inscripciones';
 import Programas from './pages/Programas';
 import Estructura from './pages/Estructura';
@@ -19,6 +20,8 @@ import Cohortes from './pages/Cohortes';
 import HistoricoCursos from './pages/HistoricoCursos';
 import HistoricoEstudiante from './pages/HistoricoEstudiante'; // Added
 import GraficoCursos from './pages/GraficoCursos';
+import Egresados from './pages/Egresados';
+import Usuarios from './pages/Usuarios';
 
 // Services
 import authService from "./services/authService";
@@ -131,6 +134,14 @@ function HistoricoEstudianteWrapper() {
   );
 }
 
+function UsuariosWrapper() {
+  return (
+    <AppLayout title="Usuarios">
+      <Usuarios />
+    </AppLayout>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
@@ -163,6 +174,7 @@ export default function App() {
           {initializing ? null : (
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/set-password" element={<PrivateRoute><AppLayout title="Actualizar Contraseña"><SetPassword /></AppLayout></PrivateRoute>} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/estudiantes" element={<PrivateRoute><EstudiantesWrapper /></PrivateRoute>} />
@@ -177,6 +189,8 @@ export default function App() {
             <Route path="/historico-cursos" element={<PrivateRoute><HistoricoCursosWrapper /></PrivateRoute>} />
             <Route path="/historico-estudiante" element={<PrivateRoute><HistoricoEstudianteWrapper /></PrivateRoute>} /> {/* Added */}
             <Route path="/grafico-cursos" element={<PrivateRoute><AppLayout title="Grafico de Cursos"><GraficoCursos /></AppLayout></PrivateRoute>} />
+            <Route path="/egresados" element={<PrivateRoute><AppLayout title="Egresados"><Egresados /></AppLayout></PrivateRoute>} />
+            <Route path="/usuarios" element={<PrivateRoute><UsuariosWrapper /></PrivateRoute>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} /> {/* Catch-all for unknown routes */}
           </Routes>
           )}

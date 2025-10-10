@@ -1,5 +1,6 @@
 # backend/core/models.py
 from django.db import models
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -131,22 +132,14 @@ class Estudiante(TimeStamped):
 
     def __str__(self): return f"{self.apellido}, {self.nombre} ({self.dni})"
 
-class Bateria(TimeStamped):
-    programa = models.ForeignKey(Programa, on_delete=models.CASCADE, related_name="baterias")
-    nombre = models.CharField(max_length=120)
-    orden = models.PositiveIntegerField(default=1)
-    class Meta:
-        unique_together = ("programa", "nombre")
-        ordering = ["programa_id", "orden", "id"]
-
 class Bloque(TimeStamped):
-    bateria = models.ForeignKey(Bateria, on_delete=models.CASCADE, related_name="bloques")
+    programa = models.ForeignKey(Programa, on_delete=models.CASCADE, related_name="bloques")
     nombre = models.CharField(max_length=120)
     orden = models.PositiveIntegerField(default=1)
     correlativas = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='es_correlativa_de')
     class Meta:
-        unique_together = ("bateria", "nombre")
-        ordering = ["bateria_id", "orden", "id"]
+        unique_together = ("programa", "nombre")
+        ordering = ["programa_id", "orden", "id"]
 
 class Modulo(TimeStamped):
     bloque = models.ForeignKey(Bloque, on_delete=models.CASCADE, related_name="modulos")
@@ -246,3 +239,11 @@ class Asistencia(TimeStamped):
             models.Index(fields=["modulo", "fecha"]),
             models.Index(fields=["estudiante", "modulo"]),
         ]
+
+# --- Users & Roles helpers ---
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    must_change_password = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Profile({self.user.username})"

@@ -8,7 +8,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { getCurso, listCohortes } from "../services/cursosService";
 import { 
-  listBaterias, createBateria, listBloques, createBloque, deleteBloque,
+  listBloques, createBloque, deleteBloque,
   listModulos, createModulo, deleteModulo,
   listExamenes, createExamen, deleteExamen
 } from "../services/estructuraService";
@@ -263,20 +263,20 @@ function ModuloManager({ bloque }) {
 }
 
 // --- BloqueManager ---
-function BloqueManager({ bateria, bloques, setBloques }) {
-  const [form, setForm] = useState({ nombre: '', orden: 10, bateria: bateria.id });
+function BloqueManager({ curso, bloques, setBloques }) {
+  const [form, setForm] = useState({ nombre: '', orden: 10, programa: curso.id });
   const [saveStatus, setSaveStatus] = useState('idle');
 
   useEffect(() => {
-    setForm(f => ({ ...f, bateria: bateria.id }));
-  }, [bateria.id]);
+    setForm(f => ({ ...f, programa: curso.id }));
+  }, [curso.id]);
 
   const fetchBloques = useCallback(async () => {
     try {
-      const res = await listBloques({ bateria: bateria.id });
+      const res = await listBloques({ programa: curso.id });
       setBloques(res.results || res);
     } catch (err) { console.error("Error fetching bloques:", err); }
-  }, [bateria.id, setBloques]);
+  }, [curso.id, setBloques]);
 
   useEffect(() => { fetchBloques(); }, [fetchBloques, setBloques]);
 
@@ -288,7 +288,7 @@ function BloqueManager({ bateria, bloques, setBloques }) {
     setSaveStatus('saving');
     try {
       await createBloque(form);
-      setForm({ nombre: '', orden: 10, bateria: bateria.id });
+      setForm({ nombre: '', orden: 10, programa: curso.id });
       fetchBloques();
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -321,7 +321,7 @@ function BloqueManager({ bateria, bloques, setBloques }) {
       <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 2, my: 2, alignItems: 'center' }}>
         <TextField name="nombre" value={form.nombre} onChange={handleFormChange} label="Nombre del Bloque" size="small" required />
         <TextField name="orden" value={form.orden} onChange={handleFormChange} label="Orden" type="number" size="small" required />
-        <Button type="submit" variant="contained" disabled={saveStatus === 'saving'}>Agregar Bloque</Button>
+        <Button type="submit" variant="contained" disabled={saveStatus === 'saving'}>Agregar Bloque</Button>        
         {saveStatus === 'saving' && <CircularProgress size={20} />} 
         {saveStatus === 'saved' && <Typography color="success">Guardado ✓</Typography>}
         {saveStatus === 'error' && <Typography color="error">Error al guardar</Typography>}
@@ -461,32 +461,24 @@ function BloqueExamenPreview({ bloque }) {
   );
 }
 
-function CoursePreview({ curso, bateria, bloques }) {
+function CoursePreview({ curso, bloques }) {
   return (
     <Box>
       <Typography variant="h5" gutterBottom>Vista Previa del Curso: {curso.nombre}</Typography>
-      {bateria ? (
-        <Box>
-          <Typography variant="h6">Batería: {bateria.nombre}</Typography>
-          {bloques.length > 0 ? (
-            bloques.map(bloque => (
-              <Accordion key={bloque.id} defaultExpanded>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="subtitle1">Bloque {bloque.orden}: {bloque.nombre}</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {/* Modulos and Examenes for this bloque will go here */}
-                  <ModuloPreview bloque={bloque} />
-                  <BloqueExamenPreview bloque={bloque} />
-                </AccordionDetails>
-              </Accordion>
-            ))
-          ) : (
-            <Typography>No hay bloques definidos para esta batería.</Typography>
-          )}
-        </Box>
+      {bloques.length > 0 ? (
+        bloques.map(bloque => (
+          <Accordion key={bloque.id} defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="subtitle1">Bloque {bloque.orden}: {bloque.nombre}</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <ModuloPreview bloque={bloque} />
+              <BloqueExamenPreview bloque={bloque} />
+            </AccordionDetails>
+          </Accordion>
+        ))
       ) : (
-        <Typography>No hay batería para mostrar en vista previa.</Typography>
+        <Typography>No hay bloques definidos para este curso.</Typography>
       )}
     </Box>
   );
@@ -496,11 +488,10 @@ function CoursePreview({ curso, bateria, bloques }) {
 export default function CursoDetail() {
   const { id } = useParams();
   const [curso, setCurso] = useState(null);
-  const [bateria, setBateria] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('edit'); // 'edit' or 'preview'
-  const [bloques, setBloques] = useState([]); // New state for bloques
+  const [bloques, setBloques] = useState([]);
   // Inline graph (API-based)
   const [cohortes, setCohortes] = useState([]);
   const [cohorteId, setCohorteId] = useState('');
@@ -513,19 +504,10 @@ export default function CursoDetail() {
     try {
       const currentCurso = await getCurso(id);
       setCurso(currentCurso);
-
-      const bateriasData = await listBaterias({ programa: currentCurso.id });
-      const bateriasList = bateriasData.results || bateriasData;
       
-      if (bateriasList.length > 0) {
-        const currentBateria = bateriasList[0];
-        setBateria(currentBateria);
-        const bloquesData = await listBloques({ bateria: currentBateria.id });
-        setBloques(bloquesData.results || bloquesData);
-      } else {
-        setBateria(null);
-        setBloques([]);
-      }
+      const bloquesData = await listBloques({ programa: currentCurso.id });
+      setBloques(bloquesData.results || bloquesData);
+
     } catch (err) {
       console.error("Failed to fetch course structure:", err);
       setError("Ocurrió un error al cargar la estructura del curso.");
@@ -560,19 +542,6 @@ export default function CursoDetail() {
       setGraph(null);
     } finally {
       setGraphLoading(false);
-    }
-  };
-
-  const handleCreateDefaultBateria = async () => {
-    setLoading(true);
-    try {
-      const newBateria = await createBateria({ programa: curso.id, nombre: `Default Bateria for ${curso.nombre}` });
-      setBateria(newBateria.data);
-      setBloques([]); // It will be new, so no bloques yet
-    } catch (err) {
-      setError("Error al crear la batería por defecto.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -613,34 +582,25 @@ export default function CursoDetail() {
           </Box>
           {graph && (
             <Box>
-              {(graph.tree || []).map(bat => (
-                <Accordion key={`bat-${bat.id}`} sx={{ my:1 }}>
+              {(graph.tree || []).map(blo => (
+                <Accordion key={`blo-${blo.id}`} sx={{ my: 1 }}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography fontWeight={600}>Batería {bat.orden}: {bat.nombre}</Typography>
+                    <Typography>Bloque {blo.orden}: {blo.nombre}</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    {(bat.children || []).map(blo => (
-                      <Accordion key={`blo-${blo.id}`} sx={{ my: 1 }}>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography>Bloque {blo.orden}: {blo.nombre}</Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          {(blo.children || []).map(mod => (
-                            <Box key={`mod-${mod.id}`} sx={{ pl: 2, py: 0.5 }}>
-                              <Typography variant="body2">Módulo {mod.orden}: {mod.nombre} {mod.es_practica ? '(Práctica)' : ''}</Typography>
-                            </Box>
-                          ))}
-                          {Array.isArray(blo.finales) && blo.finales.length > 0 && (
-                            <Box sx={{ pl: 2, pt: 1 }}>
-                              <Typography variant="subtitle2">Finales del Bloque</Typography>
-                              {blo.finales.map(fin => (
-                                <Typography key={`fin-${fin.id}`} variant="body2" color="text.secondary">- {fin.tipo_examen} {fin.fecha ? `(${fin.fecha})` : ''}</Typography>
-                              ))}
-                            </Box>
-                          )}
-                        </AccordionDetails>
-                      </Accordion>
+                    {(blo.children || []).map(mod => (
+                      <Box key={`mod-${mod.id}`} sx={{ pl: 2, py: 0.5 }}>
+                        <Typography variant="body2">Módulo {mod.orden}: {mod.nombre} {mod.es_practica ? '(Práctica)' : ''}</Typography>
+                      </Box>
                     ))}
+                    {Array.isArray(blo.finales) && blo.finales.length > 0 && (
+                      <Box sx={{ pl: 2, pt: 1 }}>
+                        <Typography variant="subtitle2">Finales del Bloque</Typography>
+                        {blo.finales.map(fin => (
+                          <Typography key={`fin-${fin.id}`} variant="body2" color="text.secondary">- {fin.tipo_examen} {fin.fecha ? `(${fin.fecha})` : ''}</Typography>
+                        ))}
+                      </Box>
+                    )}
                   </AccordionDetails>
                 </Accordion>
               ))}
@@ -648,18 +608,10 @@ export default function CursoDetail() {
           )}
         </Box>
 
-        {viewMode === 'edit' && (
-          bateria ? (
-            <BloqueManager bateria={bateria} bloques={bloques} setBloques={setBloques} />
-          ) : (
-            <Box>
-              <Typography>Este curso aún no tiene una estructura definida.</Typography>
-              <Button onClick={handleCreateDefaultBateria}>Crear Estructura de Curso</Button>
-            </Box>
-          )
-        )}
-        {viewMode === 'preview' && (
-          <CoursePreview curso={curso} bateria={bateria} bloques={bloques} />
+        {viewMode === 'edit' ? (
+          <BloqueManager curso={curso} bloques={bloques} setBloques={setBloques} />
+        ) : (
+          <CoursePreview curso={curso} bloques={bloques} />
         )}
       </Paper>
 

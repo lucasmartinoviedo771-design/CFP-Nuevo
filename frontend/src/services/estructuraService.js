@@ -1,14 +1,5 @@
 import apiClient from "./apiClient";
 
-// --- Bateria Service ---
-export const listBaterias = async (params) => {
-  const { data } = await apiClient.get("/baterias/", { params });
-  return data;
-}
-export const createBateria = (data) => apiClient.post("/baterias/", data);
-export const updateBateria = (id, data) => apiClient.patch(`/baterias/${id}/`, data);
-export const deleteBateria = (id) => apiClient.delete(`/baterias/${id}/`);
-
 // --- Bloque Service ---
 export const listBloques = async (params) => {
   const { data } = await apiClient.get("/bloques/", { params });

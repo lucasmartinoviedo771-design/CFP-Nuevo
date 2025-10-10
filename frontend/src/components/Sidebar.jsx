@@ -22,6 +22,7 @@ const dataItems = [
   { label: 'Dashboard', icon: <DashboardIcon/>, href: '/dashboard' },
   { label: 'Histórico por Cursos', icon: <BarChartIcon/>, href: '/historico-cursos' },
   { label: 'Histórico por Estudiante', icon: <PeopleIcon/>, href: '/historico-estudiante' },
+  { label: 'Egresados', icon: <HowToRegIcon/>, href: '/egresados' },
 ];
 
 const cargaDatosItems = [
@@ -31,7 +32,7 @@ const cargaDatosItems = [
 ];
 
 const calificacionesItems = [
-    { label: 'Notas / Equivalencias', icon: <GradingIcon/>, href: '/notas' },
+  { label: 'Notas / Equivalencias', icon: <GradingIcon/>, href: '/notas' },
 ];
 
 const adminCursosItems = [
@@ -40,6 +41,10 @@ const adminCursosItems = [
   { label: 'Calendario Académico', icon: <CalendarMonthIcon/>, href: '/calendario' },
   { label: 'Cohortes', icon: <GroupIcon/>, href: '/cohortes' },
   { label: 'Gráfico de Cursos', icon: <BarChartIcon/>, href: '/grafico-cursos' },
+];
+
+const secretariaItems = [
+  { label: 'Usuarios', icon: <PeopleIcon/>, href: '/usuarios' },
 ];
 
 function NestedListItem({ item }) {
@@ -51,7 +56,7 @@ function NestedListItem({ item }) {
   );
 }
 
-export default function Sidebar({ width=240 }) {
+export default function Sidebar({ width = 240 }) {
   const location = useLocation();
   const [openSection, setOpenSection] = useState(null);
 
@@ -65,15 +70,15 @@ export default function Sidebar({ width=240 }) {
       setOpenSection('calificaciones');
     } else if (adminCursosItems.some(item => item.href === currentPath)) {
       setOpenSection('admin');
+    } else if (secretariaItems.some(item => item.href === currentPath)) {
+      setOpenSection('secretaria');
     } else {
       setOpenSection(null);
     }
   }, [location.pathname]);
 
   const handleClick = (sectionName) => {
-    setOpenSection(prevOpenSection =>
-      prevOpenSection === sectionName ? null : sectionName
-    );
+    setOpenSection(prev => (prev === sectionName ? null : sectionName));
   };
 
   return (
@@ -86,7 +91,7 @@ export default function Sidebar({ width=240 }) {
       }}
     >
       <Toolbar>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>CFP • Admin</Typography>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>CFP Admin</Typography>
       </Toolbar>
       <List>
         {/* Datos */}
@@ -137,7 +142,20 @@ export default function Sidebar({ width=240 }) {
           </List>
         </Collapse>
 
+        {/* Secretaría */}
+        <ListItemButton onClick={() => handleClick('secretaria')}>
+          <ListItemIcon><GroupIcon /></ListItemIcon>
+          <ListItemText primary="Secretaría" />
+          {openSection === 'secretaria' ? <ExpandLess /> : <ExpandMore />}
+        </ListItemButton>
+        <Collapse in={openSection === 'secretaria'} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {secretariaItems.map(item => <NestedListItem key={item.href} item={item} />)}
+          </List>
+        </Collapse>
+
       </List>
     </Drawer>
   );
 }
+

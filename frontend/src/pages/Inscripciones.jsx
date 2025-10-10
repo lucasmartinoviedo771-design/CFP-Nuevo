@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  createInscripcion,
-  deleteInscripcion,
-} from "../services/inscripcionesService";
+import { createInscripcion, deleteInscripcion } from "../services/inscripcionesService";
+import { listNotas } from "../services/notasService";
 import api from "../services/apiClient";
 import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
@@ -23,6 +21,7 @@ export default function Inscripciones() {
   const [selectedCohortes, setSelectedCohortes] = useState([]);
   const [selectedModulos, setSelectedModulos] = useState({}); // { cohorteId: [moduloId1, ...] }
   const [bloques, setBloques] = useState({}); // { cohorteId: [bloque1, ...] }
+  const [approvedModuleIds, setApprovedModuleIds] = useState(new Set());
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Fetch initial data
@@ -50,11 +49,28 @@ export default function Inscripciones() {
     fetchData();
   }, [page, rowsPerPage]);
 
-  const handleStudentChange = (event) => {
+  const handleStudentChange = async (event) => {
     const studentId = event.target.value;
     setSelectedStudent(studentId);
     setSelectedCohortes([]);
     setSelectedModulos({});
+    setApprovedModuleIds(new Set());
+
+    if (studentId) {
+      try {
+        const notasData = await listNotas({ estudiante: studentId, aprobado: true, page_size: 500 });
+        const modIds = new Set();
+        (notasData.results || notasData).forEach(nota => {
+          if (nota.examen_modulo_id) {
+            modIds.add(nota.examen_modulo_id);
+          }
+        });
+        setApprovedModuleIds(modIds);
+      } catch (error) {
+        console.error("Error fetching approved modules:", error);
+        setErrorMsg("Error al cargar el historial del estudiante.");
+      }
+    }
   };
 
   const handleModuloToggle = async (cohorteId, moduloId) => {
@@ -63,7 +79,7 @@ export default function Inscripciones() {
     const parentBloque = allBloques.find(b => b.modulos.some(m => m.id === moduloId));
 
     if (!isSelected && parentBloque) {
-      // Prerequisite check
+      // Prerequisite check for the parent block
       if (parentBloque.correlativas && parentBloque.correlativas.length > 0) {
         try {
           const { data: prereqCheck } = await api.get(`/bloques/${parentBloque.id}/verificar_correlativas/?student_id=${selectedStudent}`);
@@ -100,8 +116,7 @@ export default function Inscripciones() {
         const cohorte = cohortes.find(c => c.id === cohorteId);
         const programaId = cohorte.programa.id;
         const { data: programaData } = await api.get(`/programas/${programaId}/`);
-        const cohorteBloques = programaData.baterias.flatMap(b => b.bloques);
-        setBloques(prev => ({ ...prev, [cohorteId]: cohorteBloques }));
+        setBloques(prev => ({ ...prev, [cohorteId]: programaData.bloques }));
       } catch (error) {
         console.error(`Error fetching bloques for cohorte ${cohorteId}:`, error);
       }
@@ -138,12 +153,11 @@ export default function Inscripciones() {
 
       alert('Inscripción/es creada/s con éxito!');
       
-      // Reset form state
       setSelectedStudent('');
       setSelectedCohortes([]);
       setSelectedModulos({});
+      setApprovedModuleIds(new Set());
       
-      // Refetch inscriptions
       const updatedInscripciones = await api.get('/inscripciones/', { params: { page: page + 1, page_size: rowsPerPage } });
       setInscripciones(updatedInscripciones.data.results || updatedInscripciones.data);
       setTotal(updatedInscripciones.data.count ?? total);
@@ -226,30 +240,39 @@ export default function Inscripciones() {
                   Módulos para {cohortes.find(c => c.id === cohorteId)?.nombre}:
                 </Typography>
                 {bloques[cohorteId]?.map(bloque => (
-                  <Accordion key={bloque.id} sx={{ mt: 1 }}>
+                  <Accordion key={bloque.id} sx={{ mt: 1 }} defaultExpanded>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Typography>{bloque.nombre}</Typography>
                     </AccordionSummary>
                     <AccordionDetails sx={{ display: 'flex', flexDirection: 'column' }}>
-                      {bloque.modulos?.map(modulo => {
-                        const isEnrolledInModule = inscripciones.some(
-                          (insc) => insc.modulo?.id === modulo.id && insc.estudiante.id === selectedStudent
-                        );
-                        return (
-                          <FormControlLabel
-                            key={modulo.id}
-                            sx={{ ml: 2 }}
-                            control={
-                              <Checkbox
-                                checked={isEnrolledInModule || selectedModulos[cohorteId]?.includes(modulo.id) || false}
-                                onChange={() => handleModuloToggle(cohorteId, modulo.id)}
-                                disabled={isEnrolledInModule}
-                              />
-                            }
-                            label={modulo.nombre}
-                          />
-                        );
-                      })}
+                      {(() => {
+                        const modulosSorted = [...(bloque.modulos || [])].sort((a, b) => a.orden - b.orden);
+                        const unapprovedModules = modulosSorted.filter(m => !approvedModuleIds.has(m.id));
+                        const nextModuleToEnroll = unapprovedModules.length > 0 ? unapprovedModules[0] : null;
+
+                        return modulosSorted.map(modulo => {
+                          const isEnrolled = inscripciones.some(insc => insc.modulo?.id === modulo.id && insc.estudiante.id === selectedStudent);
+                          const isApproved = approvedModuleIds.has(modulo.id);
+                          
+                          const isSelectable = nextModuleToEnroll ? modulo.id === nextModuleToEnroll.id : false;
+                          const isDisabled = isApproved || isEnrolled || !isSelectable;
+
+                          return (
+                            <FormControlLabel
+                              key={modulo.id}
+                              sx={{ ml: 2 }}
+                              control={
+                                <Checkbox
+                                  checked={isApproved || isEnrolled || (selectedModulos[cohorteId]?.includes(modulo.id) || false)}
+                                  onChange={() => handleModuloToggle(cohorteId, modulo.id)}
+                                  disabled={isDisabled}
+                                />
+                              }
+                              label={`${modulo.nombre} ${isApproved ? '(Aprobado)' : ''}`}
+                            />
+                          );
+                        });
+                      })()}
                     </AccordionDetails>
                   </Accordion>
                 ))}

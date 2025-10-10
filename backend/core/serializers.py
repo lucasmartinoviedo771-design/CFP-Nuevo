@@ -2,14 +2,22 @@
 from rest_framework import serializers
 from django.db.models import Q, Avg, Count
 from .models import (
-    Estudiante, Programa, Bateria, Bloque, Modulo, Examen, Nota, Asistencia, 
+    Estudiante, Programa, Bloque, Modulo, Examen, Nota, Asistencia, 
     Inscripcion, BloqueDeFechas, SemanaConfig, Cohorte
 )
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.models import User, Group
+from .roles import list_roles
 
 class EstudianteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Estudiante
         fields = "__all__"
+
+class GroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['id', 'name']
 
 class SemanaConfigSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,8 +50,19 @@ class CohorteSerializer(serializers.ModelSerializer):
         model = Cohorte
         fields = ['id', 'nombre', 'programa', 'bloque_fechas', 'programa_id', 'bloque_fechas_id']
 
+class ExamenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Examen
+        fields = "__all__"
+
+class SimpleBloqueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bloque
+        fields = ['id', 'nombre']
+
 class ModuloSerializer(serializers.ModelSerializer):
     examenes = serializers.SerializerMethodField()
+    bloque = SimpleBloqueSerializer(read_only=True)
 
     class Meta:
         model = Modulo
@@ -65,33 +84,16 @@ class BloqueDetailSerializer(serializers.ModelSerializer):
         qs = Examen.objects.filter(bloque=obj, tipo_examen__in=['FINAL_VIRTUAL', 'FINAL_SINC', 'EQUIVALENCIA'])
         return ExamenSerializer(qs, many=True).data
 
-class BateriaDetailSerializer(serializers.ModelSerializer):
+class ProgramaDetailSerializer(serializers.ModelSerializer):
     bloques = BloqueDetailSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Bateria
-        fields = ['id', 'nombre', 'orden', 'bloques']
-
-class ProgramaDetailSerializer(serializers.ModelSerializer):
-    baterias = BateriaDetailSerializer(many=True, read_only=True)
-
-    class Meta:
         model = Programa
-        fields = ['id', 'codigo', 'nombre', 'activo', 'baterias']
-
-class BateriaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Bateria
-        fields = "__all__"
+        fields = ['id', 'codigo', 'nombre', 'activo', 'bloques']
 
 class BloqueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bloque
-        fields = "__all__"
-
-class ExamenSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Examen
         fields = "__all__"
 
 class InscripcionSerializer(serializers.ModelSerializer):
@@ -114,6 +116,7 @@ class InscripcionSerializer(serializers.ModelSerializer):
 
 class NotaSerializer(serializers.ModelSerializer):
     examen_modulo_nombre = serializers.CharField(source="examen.modulo.nombre", read_only=True, allow_null=True)
+    examen_modulo_id = serializers.IntegerField(source="examen.modulo.id", read_only=True, allow_null=True)
     examen_bloque_nombre = serializers.SerializerMethodField()
     examen_programa_nombre = serializers.SerializerMethodField()
     examen_tipo_examen = serializers.CharField(source="examen.tipo_examen", read_only=True)
@@ -133,8 +136,8 @@ class NotaSerializer(serializers.ModelSerializer):
         elif obj.examen.modulo and obj.examen.modulo.bloque:
             bloque = obj.examen.modulo.bloque
         
-        if bloque and bloque.bateria and bloque.bateria.programa:
-            return bloque.bateria.programa.nombre
+        if bloque and bloque.programa:
+            return bloque.programa.nombre
         return None
 
     class Meta:
@@ -144,6 +147,7 @@ class NotaSerializer(serializers.ModelSerializer):
             'examen', 'estudiante', 'calificacion', 'aprobado', 'fecha_calificacion',
             'es_equivalencia', 'origen_equivalencia', 'fecha_ref_equivalencia',
             'examen_modulo_nombre',
+            'examen_modulo_id',
             'examen_bloque_nombre',
             'examen_programa_nombre',
             'examen_tipo_examen',
@@ -182,3 +186,71 @@ class AsistenciaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Asistencia
         fields = "__all__"
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('Contraseña actual inválida.')
+        return value
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
+class AssignRoleSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    role_name = serializers.ChoiceField(choices=[(r, r) for r in list_roles()])
+
+class UserSerializer(serializers.ModelSerializer):
+    groups = serializers.SlugRelatedField(many=True, slug_field='name', queryset=Group.objects.all())
+    password = serializers.CharField(write_only=True, required=False)
+    password2 = serializers.CharField(write_only=True, required=False)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'groups', 'password', 'password2']
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def validate(self, data):
+        if 'password' in data and 'password2' in data and data['password'] != data['password2']:
+            raise serializers.ValidationError({'password2': "Las contraseñas no coinciden."})
+        if 'password' in data:
+            validate_password(data['password'])
+        return data
+
+    def create(self, validated_data):
+        groups_data = validated_data.pop('groups', [])
+        password = validated_data.pop('password', None)
+        validated_data.pop('password2', None) # Remove password2
+
+        user = User.objects.create(**validated_data)
+        if password:
+            user.set_password(password)
+            user.save()
+        user.groups.set(groups_data)
+        return user
+
+    def update(self, instance, validated_data):
+        groups_data = validated_data.pop('groups', None)
+        password = validated_data.pop('password', None)
+        validated_data.pop('password2', None) # Remove password2
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if password:
+            instance.set_password(password)
+        instance.save()
+
+        if groups_data is not None:
+            instance.groups.set(groups_data)
+
+        return instance

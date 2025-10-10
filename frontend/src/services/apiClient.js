@@ -1,15 +1,20 @@
 import axios from 'axios';
 import authService from './authService';
 
+// En desarrollo, usa el proxy de CRA (package.json -> proxy)
+// Fallback a "/api" para evitar CORS;
+// en producción, sobreescribe con REACT_APP_API_BASE_URL si es necesario.
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: process.env.REACT_APP_API_BASE_URL || '/api',
 });
 
 // Request interceptor: Adds the auth token to every request
 apiClient.interceptors.request.use(
   (config) => {
+    const url = config?.url || '';
+    const isAuthRoute = url.includes('/token');
     const token = authService.getAccessToken();
-    if (token) {
+    if (!isAuthRoute && token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
@@ -40,15 +45,19 @@ apiClient.interceptors.response.use(
         try {
           const refreshToken = authService.getRefreshToken();
           if (refreshToken) {
-            console.log("Access token expired. Attempting to refresh...");
+            // console.log("Access token expired. Attempting to refresh...");
             const newAccessToken = await authService.refresh(refreshToken);
-            
-            // authService.refresh already updates localStorage. 
-            // Now we retry the original request. The request interceptor will add the new token.
+
+            // Aseguramos que el nuevo token se use inmediatamente en el reintento
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+
+            // Reintentamos la solicitud original
             return apiClient(originalRequest);
           } else {
             // No refresh token, logout user
-            console.log("No refresh token found. Logging out.");
+            // console.log("No refresh token found. Logging out.");
             authService.logout();
             window.location.href = '/login';
             return Promise.reject(error);
